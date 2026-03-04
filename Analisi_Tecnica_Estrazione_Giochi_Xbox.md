@@ -144,6 +144,74 @@ Xbox 360 e Xbox One retrocompatibili.
 
 ---
 
+## Feature aggiuntive
+
+### FEATURE A — Selettore categoria console (terminale interattivo)
+**Obiettivo:** permettere all'utente di scegliere quale generazione di giochi
+scaricare prima di avviare lo scraping, con un menu numerato da terminale.
+
+**Generazioni supportate** (da `XboxConsoleGenOptimized` nell'API):
+
+| Codice | Console | Campo API |
+|--------|---------|-----------|
+| `all`  | Tutte le generazioni | — |
+| `og`   | Xbox Original (2001) | `ConsoleGen6` |
+| `360`  | Xbox 360 (2005) | `ConsoleGen7` |
+| `xone` | Xbox One (2013) | `ConsoleGen8` (non Gen9) |
+| `series` | Xbox Series X\|S enhanced | `ConsoleGen9` |
+
+**Comportamento:**
+- Senza argomenti: menu interattivo da terminale con selezione numerata
+- Con `--category CODICE`: non-interattivo (per automazione/scripting)
+- La categoria viene rilevata **post-fetch** dall'API e usata per filtrare i risultati
+
+**File coinvolti:** `fetch_xbox_og.py`
+**Stato:** [x] implementato (`select_category_interactive()`, `--category`, `detect_console_gen()`)
+
+---
+
+### FEATURE B — Download catalogo retrocompatibile completo
+**Obiettivo:** scaricare l'intero elenco di giochi retrocompatibili Xbox (stimato
+~4000 titoli) con supporto per specificare la categoria/generazione target.
+
+**Pagine Xbox note per categoria:**
+
+| Categoria | URL |
+|-----------|-----|
+| Tutte | `https://www.xbox.com/en-US/games/backward-compatibility` |
+| OG Xbox | stessa pagina, sezione dedicata |
+| Xbox 360 | stessa pagina, sezione dedicata |
+
+**Approccio:** `fetch_bigids.py --page URL` tenta discovery automatica;
+se fallisce, usa `--input bundle.js` con il file JS scaricato manualmente
+dal DevTools (Network → JS → cerca "biUrls").
+
+**File coinvolti:** `fetch_bigids.py`
+**Stato:** [x] implementato (discovery automatica + fallback locale)
+
+---
+
+### FEATURE C — HTML: filtri per genere, generazione e sort prezzo numerico
+**Obiettivo:** interfaccia HTML con filtri per:
+- **Genere gioco** (da `Categories` API, es. "Action & adventure", "Role playing")
+- **Generazione console** (da `XboxConsoleGenOptimized`, es. "Xbox One", "Xbox 360")
+- **Sort prezzo** (numerico, non lessicografico — valore estratto e messo in `data-price`)
+- **Sort alfabetico** (già presente)
+
+**Dati aggiuntivi per card HTML:**
+```
+data-genre="action--adventure"   ← Categories[0] normalizzato
+data-gen="xone"                   ← generazione rilevata
+data-price-num="19.99"            ← prezzo numerico per sort
+```
+
+**UI:** pill-button per ogni filtro, toggle multiplo, reset "Tutti"
+
+**File coinvolti:** `fetch_xbox_og.py` (generazione HTML)
+**Stato:** [x] implementato (filtri dinamici generati dai dati reali)
+
+---
+
 ## Ordine di implementazione
 
 ```
@@ -154,6 +222,12 @@ Xbox 360 e Xbox One retrocompatibili.
 [GAP 4] Rate limiting + retry                    ← integrato in fetch_xbox_og.py
     ↓
 [GAP 5] Filtro retrocompatibilità + tag          ← argomento CLI + logica in fetch_xbox_og.py
+    ↓
+[FEATURE A] Terminal selector generazione        ← menu interattivo + --category CLI
+    ↓
+[FEATURE B] Download catalogo completo           ← fetch_bigids.py multi-pagina
+    ↓
+[FEATURE C] HTML: filtri genere/gen + sort fix   ← pill-button + data attributes
 ```
 
 ---

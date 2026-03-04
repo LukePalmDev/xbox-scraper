@@ -1,0 +1,2090 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Xbox — 107 giochi (Xbox One · IT)</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root { --green:#00e676; --green-dim:#00b357; --dark:#060a0e; --panel:#0c1318; --border:#1a2a1a; --text:#c8e6c9; --muted:#4a6a4a; --pill-bg:#0f1f0f; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--dark); color:var(--text); font-family:'Rajdhani',sans-serif; min-height:100vh; }
+  body::before { content:''; position:fixed; inset:0; background-image:linear-gradient(rgba(0,230,118,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,230,118,.03) 1px,transparent 1px); background-size:40px 40px; pointer-events:none; z-index:0; }
+
+  header { position:relative; z-index:1; padding:28px 40px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap; }
+  .logo { display:flex; align-items:center; gap:16px; }
+  .ring { width:48px; height:48px; border-radius:50%; border:2px solid var(--green); display:flex; align-items:center; justify-content:center; box-shadow:0 0 20px rgba(0,230,118,.3); font-size:1.3rem; animation:pulse 3s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{box-shadow:0 0 20px rgba(0,230,118,.3)} 50%{box-shadow:0 0 40px rgba(0,230,118,.55)} }
+  h1 { font-size:1.8rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
+  h1 span { color:var(--green); }
+  .sub { font-family:'Share Tech Mono',monospace; font-size:.65rem; color:var(--muted); letter-spacing:.2em; margin-top:3px; }
+  .count { font-family:'Share Tech Mono',monospace; font-size:.85rem; color:var(--green); white-space:nowrap; }
+
+  .controls { position:relative; z-index:1; padding:12px 40px; border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:10px; }
+  .ctrl-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .search-wrap { flex:1; min-width:180px; max-width:340px; position:relative; }
+  .search-wrap input { width:100%; background:var(--panel); border:1px solid var(--border); color:var(--text); padding:8px 12px 8px 32px; font-family:'Share Tech Mono',monospace; font-size:.82rem; outline:none; transition:border-color .2s; }
+  .search-wrap input:focus { border-color:var(--green); }
+  .search-wrap input::placeholder { color:var(--muted); }
+  .si { position:absolute; left:9px; top:50%; transform:translateY(-50%); color:var(--muted); font-size:.9rem; }
+  select { background:var(--panel); border:1px solid var(--border); color:var(--text); padding:8px 12px; font-family:'Share Tech Mono',monospace; font-size:.78rem; outline:none; cursor:pointer; }
+
+  .filter-row { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .filter-label { font-family:'Share Tech Mono',monospace; font-size:.65rem; color:var(--muted); letter-spacing:.1em; white-space:nowrap; }
+  .pill { background:var(--pill-bg); border:1px solid var(--border); color:var(--muted); padding:4px 10px; font-family:'Share Tech Mono',monospace; font-size:.65rem; cursor:pointer; transition:all .15s; white-space:nowrap; }
+  .pill:hover { border-color:var(--green-dim); color:var(--text); }
+  .pill.active { background:var(--green-dim); border-color:var(--green); color:var(--dark); font-weight:600; }
+
+  .no-results { display:none; position:relative; z-index:1; padding:60px 40px; text-align:center; font-family:'Share Tech Mono',monospace; color:var(--muted); }
+  .game-grid { position:relative; z-index:1; padding:18px 40px 60px; display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:10px; }
+  .game-card { background:var(--panel); border:1px solid var(--border); overflow:hidden; transition:border-color .2s,transform .15s; }
+  .game-card:hover { border-color:var(--green-dim); transform:translateY(-3px); }
+  .img-wrap { width:100%; aspect-ratio:16/9; background:#0a180a; overflow:hidden; }
+  .img-wrap img { width:100%; height:100%; object-fit:cover; display:block; }
+  .no-img { width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:2rem; color:var(--border); }
+  .card-body { padding:9px 11px; }
+  .card-title { font-size:.88rem; font-weight:600; line-height:1.3; margin-bottom:5px; }
+  .card-tags { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:5px; }
+  .tag { font-family:'Share Tech Mono',monospace; font-size:.52rem; padding:2px 5px; }
+  .tag-gen { background:#001a0d; border:1px solid var(--green-dim); color:var(--green); }
+  .tag-genre { background:#0a0a1a; border:1px solid #334; color:#8899bb; }
+  .card-meta { display:flex; align-items:center; justify-content:space-between; }
+  .card-price { font-family:'Share Tech Mono',monospace; font-size:.7rem; color:var(--green); }
+  .card-id { font-family:'Share Tech Mono',monospace; font-size:.55rem; color:var(--muted); margin-top:3px; }
+
+  @media(max-width:600px) {
+    header,.controls,.game-grid { padding-left:16px; padding-right:16px; }
+    h1 { font-size:1.4rem; }
+    .game-grid { grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <div class="ring">🎮</div>
+    <div>
+      <h1>Xbox <span>Catalog</span></h1>
+      <div class="sub">XBOX ONE · IT</div>
+    </div>
+  </div>
+  <div class="count"><span id="vis-count">107</span> / 107 giochi</div>
+</header>
+
+<div class="controls">
+  <div class="ctrl-row">
+    <div class="search-wrap">
+      <span class="si">⌕</span>
+      <input type="text" id="search" placeholder="Cerca titolo..." oninput="applyFilters()">
+    </div>
+    <select id="sort" onchange="applyFilters()">
+      <option value="name-asc">Nome A→Z</option>
+      <option value="name-desc">Nome Z→A</option>
+      <option value="price-asc">Prezzo ↑</option>
+      <option value="price-desc">Prezzo ↓</option>
+      <option value="gen">Console (gen)</option>
+    </select>
+  </div>
+
+  <div class="filter-row">
+    <span class="filter-label">CONSOLE:</span>
+    <button class="pill active" data-filter-gen="all" onclick="setFilter('gen','all',this)">Tutte le console</button>
+    <button class="pill" data-filter-gen="xbox-one" onclick="setFilter('gen','xbox-one',this)">Xbox One</button>
+  </div>
+
+  <div class="filter-row">
+    <span class="filter-label">GENERE:</span>
+    <button class="pill active" data-filter-genre="all" onclick="setFilter('genre','all',this)">Tutti i generi</button>
+    <button class="pill" data-filter-genre="action-adventure" onclick="setFilter('genre','action-adventure',this)">Action &amp; adventure</button>
+    <button class="pill" data-filter-genre="card-board" onclick="setFilter('genre','card-board',this)">Card &amp; board</button>
+    <button class="pill" data-filter-genre="classics" onclick="setFilter('genre','classics',this)">Classics</button>
+    <button class="pill" data-filter-genre="fighting" onclick="setFilter('genre','fighting',this)">Fighting</button>
+    <button class="pill" data-filter-genre="other" onclick="setFilter('genre','other',this)">Other</button>
+    <button class="pill" data-filter-genre="platformer" onclick="setFilter('genre','platformer',this)">Platformer</button>
+    <button class="pill" data-filter-genre="racing-flying" onclick="setFilter('genre','racing-flying',this)">Racing &amp; flying</button>
+    <button class="pill" data-filter-genre="role-playing" onclick="setFilter('genre','role-playing',this)">Role playing</button>
+    <button class="pill" data-filter-genre="shooter" onclick="setFilter('genre','shooter',this)">Shooter</button>
+    <button class="pill" data-filter-genre="sports" onclick="setFilter('genre','sports',this)">Sports</button>
+  </div>
+</div>
+
+<div class="no-results" id="no-results">// nessun risultato</div>
+<div class="game-grid" id="grid">
+        <div class="game-card"
+             data-title="ace combat™ 7: skies unknown"
+             data-genre="racing-flying"
+             data-gen="xbox-one"
+             data-price-num="69.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.976.69360070460791796.00b4fdde-d0ea-4cfb-b713-ddd08d3ba34f.9463d67e-799a-4639-9f97-0a9b7b98a663" alt="ACE COMBAT™ 7: SKIES UNKNOWN" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">ACE COMBAT™ 7: SKIES UNKNOWN</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Racing &amp; flying</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">69.99 EUR</span>
+            </div>
+            <div class="card-id">BRVM8RNWLXH1</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="anthem™"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.36095.14261719590881384.c6351b1c-2ebc-434a-a853-93eddc29d8de.50b1bcb2-ab99-4d62-a31d-a8c70e0db0c1" alt="Anthem™" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Anthem™</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BP9JQBJM0FNW</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="apex legends™"
+             data-genre="shooter"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.42942.71371076658790719.998e8214-2c65-4ee4-aa1b-8f93267ba645.381d2f0c-6592-4ea5-ad63-c8f800ddb1d5" alt="Apex Legends™" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Apex Legends™</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Shooter</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BV9ML45J2Q5V</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="ashen"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="39.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.4668.67644652336133489.b3703282-21c5-4da4-9f47-ba53b33b37b5.dc22695d-4a7b-44b9-9ec6-e98ab05a2684" alt="Ashen" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Ashen</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">39.99 EUR</span>
+            </div>
+            <div class="card-id">BNXLPPCVS0HN</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="assassin&#x27;s creed odyssey"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="69.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.53783.71972716530068101.ccdcadf1-1d2a-49f2-9c37-0b0a27e5a53c.6d60329c-2f2a-4ac9-9dd3-2f132d5c3b6c" alt="Assassin&#x27;s Creed Odyssey" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Assassin&#x27;s Creed Odyssey</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">69.99 EUR</span>
+            </div>
+            <div class="card-id">BW9TWC8L4JCS</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="assassin&#x27;s creed valhalla"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.8098.14585440003614248.9f7109bf-73f7-4bc7-ba61-1eeb006d905a.222e4dfa-df01-4864-a10a-bc3666f1a3cf" alt="Assassin&#x27;s Creed Valhalla" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Assassin&#x27;s Creed Valhalla</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9N91XSTFCHRQ</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="atlas (game preview)"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="29.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.58949.14571142807322667.df9fc94b-3bd3-4ec2-b7a2-423331d84b17.5883e11e-8555-4114-83b7-72d1cb12cd6e" alt="ATLAS (Game Preview)" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">ATLAS (Game Preview)</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">29.99 EUR</span>
+            </div>
+            <div class="card-id">9P5DB49C03W6</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="battlefield™ 1 revolution"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="39.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.20517.68596255437297164.99e6fb73-cd5e-440f-90c2-d8d2eb40a69d.b89ed24d-ec2e-4720-a295-935fdbc37f7f" alt="Battlefield™ 1 Revolution" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Battlefield™ 1 Revolution</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">39.99 EUR</span>
+            </div>
+            <div class="card-id">BPL68T0XK96W</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="battlefield™ v standard edition"
+             data-genre="shooter"
+             data-gen="xbox-one"
+             data-price-num="39.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.17271.14474759442990181.2963530c-5009-4260-976b-b5f35b0963d5.f8d6441a-f491-4244-8b56-148b847cf65a" alt="Battlefield™ V Standard Edition" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Battlefield™ V Standard Edition</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Shooter</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">39.99 EUR</span>
+            </div>
+            <div class="card-id">9NZKJ17BBH50</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="below"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="24.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.35981.66842413687067999.642b7cf0-66d2-4c06-8a06-cd6faa36cc00.5c1446a2-e255-49b1-b3b0-df448471b655" alt="BELOW" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">BELOW</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">24.99 EUR</span>
+            </div>
+            <div class="card-id">C3TWVMK3BNNJ</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="black desert - standard edition"
+             data-genre="role-playing"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.169.68936456004704311.1f655e63-9cd1-404d-be2f-b3e410dab655.84acc778-1aca-40f5-98ba-4c7943430a7e" alt="Black Desert - Standard Edition" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Black Desert - Standard Edition</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Role playing</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BR5134KX2SJ0</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="bleeding edge"
+             data-genre="fighting"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.1277.14371466326394024.01592717-7297-48c4-99f9-119c05b39106.04ca366c-4fb0-4386-94c5-0fda0efa9b15" alt="Bleeding Edge" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Bleeding Edge</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Fighting</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9NS9GT6FR6QC</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="bless unleashed"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.9048.67564512681256523.387b51c0-ac94-454b-b585-744487d057b2.a2bae166-32f5-4192-8bfd-205cb4416e92" alt="Bless Unleashed" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Bless Unleashed</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BNT976QZJC80</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="borderlands 3"
+             data-genre="shooter"
+             data-gen="xbox-one"
+             data-price-num="69.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.32656.66416288418246547.8db04ed4-6710-424c-b2c7-fc1b8f89e9a2.3e684831-6a8b-4c75-8b79-29aca0aeb18a" alt="Borderlands 3" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Borderlands 3</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Shooter</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">69.99 EUR</span>
+            </div>
+            <div class="card-id">C34NB0F1B5WQ</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="call of duty®: black ops 4"
+             data-genre="shooter"
+             data-gen="xbox-one"
+             data-price-num="69.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.52687.63686339552071591.ae7ee088-c1d7-421b-8368-10451cd63360.22cfd63a-857a-4a4a-9d95-ce390bc15c3f" alt="Call of Duty®: Black Ops 4" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Call of Duty®: Black Ops 4</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Shooter</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">69.99 EUR</span>
+            </div>
+            <div class="card-id">BZJWV056VNPB</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="call of duty®: black ops cold war - standard edition"
+             data-genre="shooter"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.52829.13992297318455813.7f45ef4a-6ca3-4445-b6fc-9f00be7560b6.a7fdf5cb-3a54-4acd-b76b-aa86591e78ca" alt="Call of Duty®: Black Ops Cold War - Standard Edition" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Call of Duty®: Black Ops Cold War - Standard Edition</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Shooter</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9N41CR72ZVSL</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="call of duty®: modern warfare® - digital standard edition"
+             data-genre="shooter"
+             data-gen="xbox-one"
+             data-price-num="69.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.1926.14393996338935986.84c4ee65-c726-49ae-925f-3dca581be2df.46cd9cf0-2829-4517-a140-3d163199497f" alt="Call of Duty®: Modern Warfare® - Digital Standard Edition" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Call of Duty®: Modern Warfare® - Digital Standard Edition</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Shooter</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">69.99 EUR</span>
+            </div>
+            <div class="card-id">9NVQBQ3F6W9W</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="call of duty®: wwii - gold edition"
+             data-genre="shooter"
+             data-gen="xbox-one"
+             data-price-num="69.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.22758.71612540964422743.6634154b-bc0d-4de6-aca6-ce897c4def0d.3c42b99b-56f4-4713-93c9-429a6769aebf" alt="Call of Duty®: WWII - Gold Edition" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Call of Duty®: WWII - Gold Edition</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Shooter</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">69.99 EUR</span>
+            </div>
+            <div class="card-id">BWP0Q27QDNWQ</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="code vein"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="69.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.24025.67309809726168278.238b1eb9-bece-4b2e-b1e8-19ca99512d56.cfe8f979-ddb4-4550-85f2-fe55316ecf4f" alt="CODE VEIN" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">CODE VEIN</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">69.99 EUR</span>
+            </div>
+            <div class="card-id">C4Q7K19Q0VBZ</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="crackdown 3"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="29.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.7524.14494915233617130.8bc2d647-9563-4ed3-9081-f4a771cfa3a6.a1bdb61c-5265-420e-a5d0-307940ca5f9f" alt="Crackdown 3" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Crackdown 3</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">29.99 EUR</span>
+            </div>
+            <div class="card-id">9NXR6469DM2P</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="crash bandicoot™ n. sane trilogy"
+             data-genre="platformer"
+             data-gen="xbox-one"
+             data-price-num="39.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.8017.65328483881162508.89a95049-a2dc-4b27-8f56-0a4f5a72a393.31a122bb-6c53-49a1-bd7e-a23586dc6961" alt="Crash Bandicoot™ N. Sane Trilogy" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Crash Bandicoot™ N. Sane Trilogy</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Platformer</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">39.99 EUR</span>
+            </div>
+            <div class="card-id">C27XPR5XDMFT</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="crash™ team racing nitro-fueled"
+             data-genre="racing-flying"
+             data-gen="xbox-one"
+             data-price-num="39.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.39775.68749109251632061.7415fd07-15d9-4d61-941f-64c80c5c0bd5.f933a12e-00d4-40c0-a1db-c8b0b17fb587" alt="Crash™ Team Racing Nitro-Fueled" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Crash™ Team Racing Nitro-Fueled</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Racing &amp; flying</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">39.99 EUR</span>
+            </div>
+            <div class="card-id">BQRB60PW2SDL</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="cuphead"
+             data-genre="platformer"
+             data-gen="xbox-one"
+             data-price-num="19.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.48136.13670972585585116.43b0d943-d04d-425f-aeb4-a47dd95f9d51.951b10d7-d676-4b1e-acc2-56cf78bde95b" alt="Cuphead" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Cuphead</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Platformer</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">19.99 EUR</span>
+            </div>
+            <div class="card-id">9NJRX71M5X9P</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="cyberpunk 2077"
+             data-genre="role-playing"
+             data-gen="xbox-one"
+             data-price-num="59.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.34838.63407868131364914.bcaa868c-407e-42c2-baeb-48a3c9f29b54.1463028d-79fa-46e5-9fc2-63203992a4dc" alt="Cyberpunk 2077" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Cyberpunk 2077</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Role playing</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">59.99 EUR</span>
+            </div>
+            <div class="card-id">BX3M8L83BBRW</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="darksiders iii"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="39.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.39085.69959397327195397.eb5a523d-641e-454a-99bf-fe995269ffd5.c902a925-60f0-41ce-b875-d2c67f044fba" alt="Darksiders III" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Darksiders III</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">39.99 EUR</span>
+            </div>
+            <div class="card-id">BSVZCMGZV52L</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="darwin project"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.30859.14040729137831963.64102680-f8d3-4202-a723-4ce0ae0344ad.b0a83cb1-ac6c-4c1a-9a01-ed9749feb037" alt="Darwin Project" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Darwin Project</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9N8Q2DKWVLNX</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="destiny 2: oltre la luce"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.2958.14491519069757754.144ce769-0fc7-434b-8308-6a341e7d536e.24556363-a209-4dcf-af59-8100755e8ec5" alt="Destiny 2: Oltre la Luce" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Destiny 2: Oltre la Luce</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9NXXNTRZBS0Z</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="dirt 5 pre-order"
+             data-genre="racing-flying"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.47657.13855990411716891.ece75bda-ebf6-48c9-90f0-68448c37b572.f735e470-2253-41cc-9f47-63f3d07d9597" alt="DIRT 5 Pre-Order" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">DIRT 5 Pre-Order</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Racing &amp; flying</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9MVN0W2374DD</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="dragon ball fighterz(xbox one)"
+             data-genre="fighting"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.62697.14473450919754177.36bfcef2-add7-4018-80cf-3072fa4ee7a5.9f9f4336-ea3c-422a-a47a-6feb117363e0" alt="DRAGON BALL FIGHTERZ(Xbox One)" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">DRAGON BALL FIGHTERZ(Xbox One)</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Fighting</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BZRK5C951KK7</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="dragon ball z: kakarot pre-order bundle"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.6954.13525800846502309.0bc7eb9b-47cd-4d2e-8abc-93649e60a2a3.f577d127-8876-4285-9559-15bf7c35ca31" alt="DRAGON BALL Z: KAKAROT Pre-Order Bundle" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">DRAGON BALL Z: KAKAROT Pre-Order Bundle</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9N9V2PC90ZCN</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="ea sports™ fifa 20"
+             data-genre="sports"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.7269.71269400152242860.671bb6ff-edc7-4e49-8740-a7e200cb15f0.3f8a64e8-ad5c-4b81-b419-a75aa5ac2739" alt="EA SPORTS™ FIFA 20" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">EA SPORTS™ FIFA 20</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Sports</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BV433V4B23LM</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="edizione preordine star wars™: squadrons"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.25186.14383327081890241.76671220-7265-442a-b2f3-11356025a8f2.9004b202-b306-4092-a146-99750e87f0fc" alt="Edizione preordine STAR WARS™: Squadrons" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Edizione preordine STAR WARS™: Squadrons</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9NRGSJRMFLJQ</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="fallout 76 standard edition"
+             data-genre="role-playing"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.10153.63412280104155548.5cc80b74-024c-4eb1-94e7-05b90575e523.93fb590e-b05c-4915-950a-f15237b284d0" alt="Fallout 76 Standard Edition" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Fallout 76 Standard Edition</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Role playing</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BX3DSPQPVNQR</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="far cry® 5"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="69.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.22845.69582963086497758.e1cff2e3-ddf1-42bf-930d-f380ad63f100.1ef04059-9768-4999-b495-f48a52290ae9" alt="Far Cry® 5" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Far Cry® 5</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">69.99 EUR</span>
+            </div>
+            <div class="card-id">BR7X7MVBBQKM</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="far cry®6"
+             data-genre="shooter"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.55639.14333025555296848.2ada7e2e-1c33-443c-8dbe-9b5385ed77ee.896b412e-9696-48b8-81f5-4d37e924cd8c" alt="FAR CRY®6" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">FAR CRY®6</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Shooter</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9PP8XSN4PZQR</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="fifa 19"
+             data-genre="sports"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.9014.65935680416820512.0393700b-aebb-4624-867c-c87117df6829.7a37189d-d6fb-4196-9f66-1ba84961900e" alt="FIFA 19" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">FIFA 19</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Sports</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">C3C71TV51SQC</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="fifa 21 standard edition xbox one &amp; xbox series x|s"
+             data-genre="sports"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.61459.14430507177274335.3d51c2ff-6ac9-4da6-a0a9-cad29a48cb83.22fb402f-b5b8-4911-85bd-66ae006a2eea" alt="FIFA 21 Standard Edition Xbox One &amp; Xbox Series X|S" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">FIFA 21 Standard Edition Xbox One &amp; Xbox Series X|S</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Sports</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9NX7RF87CMFG</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="final fantasy xv royal edition"
+             data-genre="role-playing"
+             data-gen="xbox-one"
+             data-price-num="34.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.28688.68025335868860524.8a7fbb39-874f-4057-b61f-010b2f6ba2ce.25a45bfa-4be5-4423-a044-3214f28a119b" alt="FINAL FANTASY XV ROYAL EDITION" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">FINAL FANTASY XV ROYAL EDITION</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Role playing</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">34.99 EUR</span>
+            </div>
+            <div class="card-id">BNMRPFLB3PQW</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="fortnite"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.42068.70702278257994163.f4bbf9e4-8ad8-4c75-bf7b-1d26c8074a46.34d684e6-a1d9-4823-a8e4-4bdd8eb4f800" alt="Fortnite" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Fortnite</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BT5P2X999VH2</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="forza horizon 4 edizione standard"
+             data-genre="racing-flying"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.49179.14343301090572358.2000000000007864117.7d3502c7-eafb-405e-8dc2-0723a1d794ec" alt="Forza Horizon 4 Edizione standard" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Forza Horizon 4 Edizione standard</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Racing &amp; flying</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9PNJXVCVWD4K</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="forza motorsport 7 - edizione standard"
+             data-genre="racing-flying"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.43374.13999052238919448.1152921504737892830.b1e6daee-9279-4b6b-84e2-7483568b62dc" alt="Forza Motorsport 7 - Edizione Standard" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Forza Motorsport 7 - Edizione Standard</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Racing &amp; flying</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9N3NK5WW05HT</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="gears 5"
+             data-genre="shooter"
+             data-gen="xbox-one"
+             data-price-num="34.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.65421.65494054591008504.4eae27ba-1cfe-4af2-950a-4af81f8cd22a.fd4fa6b5-431f-47bc-b9c8-3844383dfb20" alt="Gears 5" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Gears 5</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Shooter</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">34.99 EUR</span>
+            </div>
+            <div class="card-id">C2KDNLT2H7DM</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="gears of war 4"
+             data-genre="shooter"
+             data-gen="xbox-one"
+             data-price-num="19.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.6102.13510798887356280.9398b0dd-2ecf-4973-9380-576d1d374a25.92d12017-af9a-41ae-b97a-8213710cdb49" alt="Gears of War 4" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Gears of War 4</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Shooter</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">19.99 EUR</span>
+            </div>
+            <div class="card-id">9NBLGGH4PBBM</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="grand theft auto v (xbox one)"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.65175.68565266983380288.0f5ef871-88c0-45f7-b108-6aacbc041fcf.120f7c2d-b622-4dc4-bfa9-0ee1dd8f52bd" alt="Grand Theft Auto V (Xbox One)" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Grand Theft Auto V (Xbox One)</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BPJ686W6S0NH</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="grounded"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="39.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.27514.14280109286674604.1fb359e4-01eb-4818-b992-b225ce4869c9.c9733025-0344-4e66-aff1-ee3bcf9016a7" alt="Grounded" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Grounded</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">39.99 EUR</span>
+            </div>
+            <div class="card-id">9PJTHRNVH62H</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="gwent: the witcher card game"
+             data-genre="card-board"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.28716.13510798887635413.a9ab7b27-2fc4-4b14-9fcf-f6aa030c733a.b85ea2b4-5529-4071-9ac9-b06205097696" alt="GWENT: The Witcher Card Game" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">GWENT: The Witcher Card Game</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Card &amp; board</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9NBLGGH51QT4</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="halo: the master chief collection"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="39.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.36764.14415742612829493.1297136a-f273-41f1-947f-59044c848c55.4c14355f-10d9-4fb3-ae20-3ff785cee057" alt="Halo: The Master Chief Collection" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Halo: The Master Chief Collection</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">39.99 EUR</span>
+            </div>
+            <div class="card-id">9MT8PTGVHX2P</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="hitman™ 2"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.51754.68646526532065766.29417bd6-04cd-4678-b428-081f869e9d1a.f6e4a022-46ad-4bed-aa42-33b5d5b7183b" alt="HITMAN™ 2" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">HITMAN™ 2</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BPQKC5TH07XF</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="injustice™ 2"
+             data-genre="fighting"
+             data-gen="xbox-one"
+             data-price-num="39.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.52395.68598211680266771.73ef9826-822a-4a0b-ab4a-4fe8fd87fc3b.81db3eda-d4dd-440a-b266-1973f0472a82" alt="Injustice™ 2" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Injustice™ 2</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Fighting</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">39.99 EUR</span>
+            </div>
+            <div class="card-id">BPKVH4C4XV4N</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="jump force"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.17929.69204298776461265.f26b50dc-40f9-4a0a-98ff-e3e8953a3e77.1cda70ce-8152-404b-aaad-d98cf45019f7" alt="JUMP FORCE" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">JUMP FORCE</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BQKTZHL91458</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="jump force welcome price!!"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.17929.70301621020309713.aa0380d2-3c01-43b4-ba92-20e3f84c461f.e969e7e8-54fd-4da2-b9f2-f57e79541833" alt="JUMP FORCE Welcome Price!!" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">JUMP FORCE Welcome Price!!</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BSJQ8S0T2S74</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="just cause 4: reloaded"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="39.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.767.14135675770949824.45a1c566-3aee-4e05-b600-cbc49fb16d6d.a9fd3630-7e48-41e4-8029-e280aa7a44d4" alt="Just Cause 4: Reloaded" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Just Cause 4: Reloaded</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">39.99 EUR</span>
+            </div>
+            <div class="card-id">9P9MC8B7R5FP</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="kingdom hearts ⅲ"
+             data-genre="role-playing"
+             data-gen="xbox-one"
+             data-price-num="69.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.27080.64731639180234187.ef9f08c7-a053-4657-a057-02cbb6029516.057415b5-77dc-462d-a246-4ecd339c3ce3" alt="KINGDOM HEARTS Ⅲ" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">KINGDOM HEARTS Ⅲ</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Role playing</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">69.99 EUR</span>
+            </div>
+            <div class="card-id">C08MW8XHQN9G</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="la terra di mezzo™: l&#x27;ombra della guerra™"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="39.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.12292.14146895813128195.1152921504736930957.923ab8a1-bb37-4438-91bf-9e376487014a" alt="La Terra di Mezzo™: L&#x27;Ombra della Guerra™" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">La Terra di Mezzo™: L&#x27;Ombra della Guerra™</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">39.99 EUR</span>
+            </div>
+            <div class="card-id">9PDV8FKWP3B4</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="life is strange 2 - stagione completa"
+             data-genre="other"
+             data-gen="xbox-one"
+             data-price-num="31.96">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.33481.69953256618848881.31a80946-b8b0-4064-9f93-f2049d1aefac.34c0f2a8-9d13-4bff-bec4-7ff5a452b593" alt="Life is Strange 2 - Stagione completa" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Life is Strange 2 - Stagione completa</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Other</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">31.96 EUR</span>
+            </div>
+            <div class="card-id">BSW8GKBVB5W8</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="life is strange: before the storm - stagione completa"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="16.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.32700.69615795815402602.6c4db579-d968-49e1-ac7b-420350ae31cb.960d3829-d379-4afe-8278-66cae46dd5e6" alt="Life is Strange: Before the Storm - Stagione completa" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Life is Strange: Before the Storm - Stagione completa</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">16.99 EUR</span>
+            </div>
+            <div class="card-id">BRB2J2GKCC3H</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="madden nfl 19"
+             data-genre="sports"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.54602.71437585899144883.87ff7914-b511-4bf1-9954-d2d853608790.9b89a7df-4ec3-4802-ae59-b8c4071333da" alt="Madden NFL 19" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Madden NFL 19</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Sports</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BVF5ZGD9NM52</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="madden nfl 20"
+             data-genre="sports"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.15687.63970390157963956.1fb71877-3559-43b0-bd23-7874763beea0.8956a818-da9d-415e-bcc7-8221bbc3bb81" alt="Madden NFL 20" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Madden NFL 20</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Sports</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BZ289TV4QVCK</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="madden nfl 21: standard edition"
+             data-genre="sports"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.62196.14047444534515179.baf980bf-7971-472e-b6ff-f19b0827c94e.a50aacdc-be40-4d8c-8422-5f8f7afcd2c8" alt="Madden NFL 21: Standard Edition" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Madden NFL 21: Standard Edition</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Sports</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9N8C9MNVQ8GS</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="marvel&#x27;s avengers"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.25384.14242771798761748.65f3517e-f4b4-47c5-ae59-40027e04c359.97e5f2e6-63fd-4bf8-a438-957734abb5a9" alt="Marvel&#x27;s Avengers" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Marvel&#x27;s Avengers</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9PGXDSNWVSR1</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="marvel&#x27;s avengers definitive edition"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.24728.69399725068812250.e18e30fe-4fd2-40d8-9c22-033732f7b7d3.4e644a3c-31c2-4c95-a506-798578841474" alt="Marvel&#x27;s Avengers Definitive Edition" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Marvel&#x27;s Avengers Definitive Edition</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BRX6HS1G5CDK</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="mega man 11"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="29.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.43949.68711168412447538.f6321823-9e31-4e69-9bbb-585bddf4cf60.e9ae542f-ce92-4a5c-a19e-e88f6cd64fdf" alt="Mega Man 11" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Mega Man 11</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">29.99 EUR</span>
+            </div>
+            <div class="card-id">BQPG2509CVJP</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="mega man legacy collection 2"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="14.98">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.8621.67442154379514079.b3e125b5-78a7-484a-901f-14c3cc1e83d9.8fd45407-8849-4468-8b11-e598fac16d51" alt="Mega Man Legacy Collection 2" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Mega Man Legacy Collection 2</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">14.98 EUR</span>
+            </div>
+            <div class="card-id">C4VFVZGF3480</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="mega man™ legacy collection"
+             data-genre="platformer"
+             data-gen="xbox-one"
+             data-price-num="14.98">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.63936.65909468844906453.45d8b6d7-dacd-4b29-a3ff-a2c840fd49ba.61caff92-76d6-4b97-9422-a10edb1e6039" alt="Mega Man™ Legacy Collection" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Mega Man™ Legacy Collection</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Platformer</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">14.98 EUR</span>
+            </div>
+            <div class="card-id">C38Z8L4RHSHS</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="metro exodus"
+             data-genre="shooter"
+             data-gen="xbox-one"
+             data-price-num="5.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.857.65642028844779555.c518e652-fc85-4d6e-99a2-3e9ae1656a91.cf450892-9317-48fe-8d3b-f6083c6c5d9a" alt="Metro Exodus" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Metro Exodus</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Shooter</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">5.99 EUR</span>
+            </div>
+            <div class="card-id">C1TBTQBVJMFL</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="minecraft dungeons"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="19.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.15805.14045794648370014.2229d39b-90c3-496e-8fac-9987450ca4d8.5af45927-45d1-4c93-9d60-26f6ca857701" alt="Minecraft Dungeons" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Minecraft Dungeons</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">19.99 EUR</span>
+            </div>
+            <div class="card-id">9N8NJ74FZTG9</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="monster hunter: world™"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="19.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.60377.67926658307646239.e8130cbd-e4b6-4c78-9fe9-424eb8a64ab1.78a5c2e6-56b7-4d89-9637-cb1f1e24a0b7" alt="MONSTER HUNTER: WORLD™" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">MONSTER HUNTER: WORLD™</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">19.99 EUR</span>
+            </div>
+            <div class="card-id">BNG91PT95LQN</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="mortal kombat 11"
+             data-genre="fighting"
+             data-gen="xbox-one"
+             data-price-num="49.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.31077.70804610839547354.8da93c46-fd13-4b16-8ebe-e8e02c53d93e.032a1c73-7961-4acf-a82a-89d2f3ccdd1f" alt="Mortal Kombat 11" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Mortal Kombat 11</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Fighting</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">49.99 EUR</span>
+            </div>
+            <div class="card-id">BTC0L0BW6LWC</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="nba 2k19"
+             data-genre="sports"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.13647.67599891974179406.e133b36c-0ade-4f11-9646-d5fb08537dda.6cbf3713-6b9a-41ad-8e55-ed8c387a08fa" alt="NBA 2K19" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">NBA 2K19</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Sports</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BNW34B7V705C</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="nba 2k20"
+             data-genre="sports"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.62910.14137173364293501.2ebdcf26-40e3-4dc2-b013-bf2347c6d3b3.0a68eb07-09d5-425c-a554-9dd135268839" alt="NBA 2K20" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">NBA 2K20</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Sports</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9P9KN2G4M2W0</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="nba 2k21"
+             data-genre="sports"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.10192.14522552561148096.987376a7-b8c2-4bec-8d4f-48e4b6df5630.a0a27ce3-e401-469b-8a57-27a98f6e75bf" alt="NBA 2K21" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">NBA 2K21</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Sports</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9P0Q1F7P0KR1</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="nier:automata™ become as gods edition"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="39.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.4400.68662117307814849.d86c4ebf-4ee7-4307-bce4-30e6169169a8.0bd4ea31-4ace-4584-9366-5f1cc4398cc3" alt="NieR:Automata™ BECOME AS GODS Edition" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">NieR:Automata™ BECOME AS GODS Edition</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">39.99 EUR</span>
+            </div>
+            <div class="card-id">BPPZVT8BZ15N</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="ori and the will of the wisps"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="29.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.40411.14047496556148589.9fda5cef-7995-4dbb-a626-66d2ab3feb4f.d87f046c-667d-4ce7-98bc-eba2b535dc94" alt="Ori and the Will of the Wisps" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Ori and the Will of the Wisps</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">29.99 EUR</span>
+            </div>
+            <div class="card-id">9N8CD0XZKLP4</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="overwatch®: legendary edition"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.51127.14553281497432575.4e8710df-0a0b-4813-8d05-490c52019361.e0822903-6eb7-4834-9c0e-0ba3bd80fa18" alt="Overwatch®: Legendary Edition" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Overwatch®: Legendary Edition</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9P2Q994ZWB64</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="plants vs. zombies™: la battaglia di neighborville"
+             data-genre="shooter"
+             data-gen="xbox-one"
+             data-price-num="19.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.46421.66663660452837213.88feed53-4335-4b35-8a3a-476a0f0fd6ca.e0e7835b-39ff-4892-8010-fd049a22fd5c" alt="Plants vs. Zombies™: La Battaglia di Neighborville" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Plants vs. Zombies™: La Battaglia di Neighborville</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Shooter</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">19.99 EUR</span>
+            </div>
+            <div class="card-id">C4HZC7LJG6PX</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="pubg: battlegrounds"
+             data-genre="shooter"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.22893.64374245401097180.300b4029-4eb8-4ce7-8845-bf430a6287a6.e7a1497f-0a49-449e-8d04-50ad57dea92d" alt="PUBG: BATTLEGROUNDS" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">PUBG: BATTLEGROUNDS</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Shooter</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">C0MN5DN8KR3F</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="rage 2"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="39.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.25179.65377716030309997.4ce8fd57-e617-46e7-9d4f-e8b49f4d07ef.c6a45f3d-a294-4a95-95e6-bcb8bab2ffec" alt="RAGE 2" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">RAGE 2</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">39.99 EUR</span>
+            </div>
+            <div class="card-id">C2DCJ95ZXBMS</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="red dead redemption 2"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.58752.68182501197884443.ac728a87-7bc1-4a0d-8bc6-0712072da93c.0cf58754-9802-46f8-8557-8d3ff32a627a" alt="Red Dead Redemption 2" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Red Dead Redemption 2</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BPSWGQBW7R3G</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="resident evil 2"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="39.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.45242.71571739681700792.c61fa2d7-3d69-4edf-8e51-accc41d47823.8a16b21a-96c4-474e-8fd4-629b9bc622ad" alt="RESIDENT EVIL 2" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">RESIDENT EVIL 2</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">39.99 EUR</span>
+            </div>
+            <div class="card-id">BWMH951M3G3P</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="resident evil 3"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.33165.14312318575986937.e3e4a835-ae1d-458f-ab0d-9ea7e209c312.217ec976-3ea2-46c3-89eb-2b84cf768ff6" alt="RESIDENT EVIL 3" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">RESIDENT EVIL 3</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9PLJWXG6ZKVQ</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="roblox - xbox"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.15909.68327322396008232.effd08b7-88b7-43b0-b91d-4689a0c70a05.8cb751bd-d0c8-4352-a273-a7bb62dd5c4b" alt="Roblox - Xbox" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Roblox - Xbox</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BQ1TN1T79V9K</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="sea of thieves: anniversary edition"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.10817.14171424291358184.5cc1e19a-2da9-40d6-8cdb-2e9621da825e.5000eb35-caed-4522-bd33-417cfed2d5c4" alt="Sea of Thieves: Anniversary Edition" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Sea of Thieves: Anniversary Edition</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9PCD5S0DMF5Z</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="sekiro™: shadows die twice - goty edition"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="69.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.26135.69038865179152125.ddcc0d78-9e3a-4110-94b3-6df63908553a.d476c9fa-e81b-4656-889e-c241d73bb93c" alt="Sekiro™: Shadows Die Twice - GOTY Edition" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Sekiro™: Shadows Die Twice - GOTY Edition</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">69.99 EUR</span>
+            </div>
+            <div class="card-id">BQD5WRRP2D6Q</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="shadow of the tomb raider"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.34218.69361434237560300.08369373-2b5b-4056-89d1-c943a5bfd11b.e789f972-ce59-4e92-b7d5-5064c8121aa0" alt="Shadow of the Tomb Raider" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Shadow of the Tomb Raider</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BRVK4W7RVCXR</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="soulcalibur vi"
+             data-genre="fighting"
+             data-gen="xbox-one"
+             data-price-num="69.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.63082.66844059373005859.084edff3-e994-44d9-8b5e-a9ead1faff94.c8f476ef-7359-426c-81fe-fddf7fd0f661" alt="SOULCALIBUR VI" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">SOULCALIBUR VI</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Fighting</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">69.99 EUR</span>
+            </div>
+            <div class="card-id">C3V22FQD8N84</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="spyro™ reignited trilogy"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="39.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.60281.71510837884329922.e091ebfc-ee9a-468a-b6e5-327d0f0d0974.1eaeaf2a-0b98-440f-b009-7b0a5b58b708" alt="Spyro™ Reignited Trilogy" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Spyro™ Reignited Trilogy</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">39.99 EUR</span>
+            </div>
+            <div class="card-id">BWHFZNSL0PB5</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="star wars jedi: fallen order™"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="49.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.16830.65392999590663672.028b6875-f925-4d40-b3a1-e44db3b4fa32.cc4f831d-718e-4771-9e6e-1a83cea24896" alt="STAR WARS Jedi: Fallen Order™" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">STAR WARS Jedi: Fallen Order™</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">49.99 EUR</span>
+            </div>
+            <div class="card-id">C2CSDTSCBZ0C</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="star wars™ battlefront™ ii"
+             data-genre="shooter"
+             data-gen="xbox-one"
+             data-price-num="19.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.12447.64256825846959382.44b5bc43-437a-4414-83ca-b41ba9e7764a.0e2ce787-008a-4571-bf11-a161817b1e01" alt="STAR WARS™ Battlefront™ II" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">STAR WARS™ Battlefront™ II</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Shooter</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">19.99 EUR</span>
+            </div>
+            <div class="card-id">C0GWTPD0S8S1</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="state of decay 2: juggernaut edition"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="29.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.45572.14425140369408817.14846606-f5bc-4fb1-b355-26ef6a25e847.ca79acfc-0a9a-4e61-a626-d7623bb12248" alt="State of Decay 2: Juggernaut Edition" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">State of Decay 2: Juggernaut Edition</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">29.99 EUR</span>
+            </div>
+            <div class="card-id">9NT4X7P8B9NB</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="tales of vesperia: definitive edition"
+             data-genre="role-playing"
+             data-gen="xbox-one"
+             data-price-num="39.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.58862.64151368418487554.bec1f6f4-6267-4546-8f68-c5819381fc3f.475441c0-4b5e-4904-915e-f19a6a6c3480" alt="Tales of Vesperia: Definitive Edition" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Tales of Vesperia: Definitive Edition</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Role playing</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">39.99 EUR</span>
+            </div>
+            <div class="card-id">BZBX8JFCDBPR</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="tell me why: capitolo 1-3"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="19.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.767.13599353568798630.567fc0f9-a81e-456c-a9ee-55bb0bb153b5.9160630f-b7b8-470d-a39f-8d36788ec893" alt="Tell Me Why: Capitolo 1-3" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Tell Me Why: Capitolo 1-3</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">19.99 EUR</span>
+            </div>
+            <div class="card-id">9NF83PRZK6K3</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="the bard&#x27;s tale iv: director&#x27;s cut"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="39.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.10488.65351109767529701.defb4d0d-acab-4fd9-8208-7283068f991e.d901abc2-dc3f-4c32-9f57-48244d5b364d" alt="The Bard&#x27;s Tale IV: Director&#x27;s Cut" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">The Bard&#x27;s Tale IV: Director&#x27;s Cut</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">39.99 EUR</span>
+            </div>
+            <div class="card-id">C2B4T86TXLRS</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="the elder scroll online : elsweyr (2019)"
+             data-genre="role-playing"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.43218.65243627448579322.de8656f3-c470-4f32-b275-2e2ed44de10f.74d6f11b-935c-475b-8f1e-4d0336d8b0e7" alt="The Elder Scroll Online : Elsweyr (2019)" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">The Elder Scroll Online : Elsweyr (2019)</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Role playing</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">C16HHTC9K79C</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="the elder scrolls® online"
+             data-genre="role-playing"
+             data-gen="xbox-one"
+             data-price-num="19.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.21134.69742768075920623.8d7d46c9-b023-4700-bdd5-c2dc4ad18d46.b0bb6075-6a53-4ad7-85ea-63f08a7fd076" alt="The Elder Scrolls® Online" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">The Elder Scrolls® Online</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Role playing</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">19.99 EUR</span>
+            </div>
+            <div class="card-id">BRKX5CRMRTC2</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="the outer worlds"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="29.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.60817.71127714305215144.dfbe21c8-4e10-4861-b737-47393066d41d.cc6b6839-fb14-421b-814c-898b8e58a716" alt="The Outer Worlds" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">The Outer Worlds</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">29.99 EUR</span>
+            </div>
+            <div class="card-id">BVTKN6CQ8W5F</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="thronebreaker: the witcher tales"
+             data-genre="role-playing"
+             data-gen="xbox-one"
+             data-price-num="19.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.57297.64712984712746964.2a77a2ee-eff2-4dd6-8c86-deecbeca42c7.646f0c7b-1c99-4bfd-9582-d172be7032a2" alt="Thronebreaker: The Witcher Tales" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Thronebreaker: The Witcher Tales</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Role playing</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">19.99 EUR</span>
+            </div>
+            <div class="card-id">C09LFD39HKLW</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="tom clancy&#x27;s ghost recon® breakpoint"
+             data-genre="shooter"
+             data-gen="xbox-one"
+             data-price-num="69.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.38194.66828190550422385.fbaf89cf-b3e0-4543-aeba-5f00ca851393.7847a95b-aa44-428b-8330-fc4ae65ab934" alt="Tom Clancy&#x27;s Ghost Recon® Breakpoint" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Tom Clancy&#x27;s Ghost Recon® Breakpoint</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Shooter</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">69.99 EUR</span>
+            </div>
+            <div class="card-id">C3VVNLQQ54F8</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="tom clancy&#x27;s rainbow six siege deluxe edition"
+             data-genre="shooter"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.61864.70363422533595795.79294904-fd81-4280-8820-f4d47148ba9e.dc84fc7e-56fe-4087-b5c5-cc0a89cd15b0" alt="Tom Clancy&#x27;s Rainbow Six Siege Deluxe Edition" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Tom Clancy&#x27;s Rainbow Six Siege Deluxe Edition</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Shooter</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BSK5FNCFN256</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="tom clancy&#x27;s the division 2"
+             data-genre="role-playing"
+             data-gen="xbox-one"
+             data-price-num="29.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.8662.71050925055292780.d113598c-97ad-4805-8dbc-eb73bf447e25.c44374e8-bbb5-4411-a862-16a5b5a549e8" alt="Tom Clancy&#x27;s The Division 2" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Tom Clancy&#x27;s The Division 2</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Role playing</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">29.99 EUR</span>
+            </div>
+            <div class="card-id">BVQ3V30ZXVT5</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="wasteland 3"
+             data-genre="role-playing"
+             data-gen="xbox-one"
+             data-price-num="39.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.5558.69010346493633739.074410cb-38ab-4f48-b6fe-0ffa69c89fa9.6fbe0426-d9be-4472-bfad-0344480efbb8" alt="Wasteland 3" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Wasteland 3</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Role playing</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">39.99 EUR</span>
+            </div>
+            <div class="card-id">BQ9T0JF0D3L4</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="wasteland 3 pre-order (xbox one)"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.25709.13587807325524088.23806390-a95f-4742-86af-e2a72231c491.d269f1e9-a110-4320-9d7a-bfe9f69fd049" alt="Wasteland 3 Pre-Order (Xbox One)" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Wasteland 3 Pre-Order (Xbox One)</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9NG2DR7WVF5P</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="wasteland remastered"
+             data-genre="classics"
+             data-gen="xbox-one"
+             data-price-num="14.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.60150.13650100416089145.e9c63102-735a-40a7-b414-10693b469ff1.bd9c07a7-be22-4688-89db-b2a8a38df68d" alt="Wasteland Remastered" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Wasteland Remastered</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Classics</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">14.99 EUR</span>
+            </div>
+            <div class="card-id">9NGH1FK0RJGL</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="watch dogs: legion"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.27631.70122047583922261.af36cab6-1199-4291-b19b-decb93efa471.f6a21e40-3519-4359-9c9e-0918d3a287ba" alt="Watch Dogs: Legion" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Watch Dogs: Legion</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">BS4DG5PLXMPJ</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="we happy few"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="69.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.40691.68143759676978415.617fe4d2-4978-4b4d-9e04-cba4cf86d432.2ed3053f-3072-44f6-86d2-37c6c2f45087" alt="We Happy Few" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">We Happy Few</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">69.99 EUR</span>
+            </div>
+            <div class="card-id">BPR2TBS2KMQJ</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="wolfenstein® ii: the new colossus™"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="39.99">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.3811.66681981221768345.76a0e962-989c-428d-a0d4-5b11187fa034.52e87a8b-c27a-44c8-91fb-28098b23466e" alt="Wolfenstein® II: The New Colossus™" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Wolfenstein® II: The New Colossus™</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">39.99 EUR</span>
+            </div>
+            <div class="card-id">C4LLMHFQ1BXQ</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="yakuza: like a dragon day ichi edition"
+             data-genre="role-playing"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.29145.14620832123901884.6aa7e527-5715-48f3-9d64-e96c4c51a008.f8f3143e-bec2-46d6-84fa-026d5abd5626" alt="Yakuza: Like a Dragon Day Ichi Edition" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">Yakuza: Like a Dragon Day Ichi Edition</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Role playing</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9P6FF3W7F0DC</div>
+          </div>
+        </div>
+        <div class="game-card"
+             data-title="ドラゴンボールz kakarot"
+             data-genre="action-adventure"
+             data-gen="xbox-one"
+             data-price-num="0.00">
+          <div class="img-wrap"><img src="https://store-images.s-microsoft.com/image/apps.2082.14578786966415537.cd2d15fd-ceec-4143-a0d6-ab4d6e4f5e38.3ac86e03-b663-4b17-8a45-06c06037fa82" alt="ドラゴンボールZ KAKAROT" loading="lazy"></div>
+          <div class="card-body">
+            <div class="card-title">ドラゴンボールZ KAKAROT</div>
+            <div class="card-tags">
+              <span class="tag tag-gen">Xbox One</span>
+              <span class="tag tag-genre">Action &amp; adventure</span>
+            </div>
+            <div class="card-meta">
+              <span class="card-price">—</span>
+            </div>
+            <div class="card-id">9P570PB7BLNQ</div>
+          </div>
+        </div></div>
+
+<script>
+var activeGenre = 'all';
+var activeGen = 'all';
+
+function setFilter(type, value, btn) {
+  if (type === 'genre') {
+    activeGenre = value;
+    document.querySelectorAll('[data-filter-genre]').forEach(b => b.classList.remove('active'));
+  } else {
+    activeGen = value;
+    document.querySelectorAll('[data-filter-gen]').forEach(b => b.classList.remove('active'));
+  }
+  btn.classList.add('active');
+  applyFilters();
+}
+
+function applyFilters() {
+  var q = document.getElementById('search').value.toLowerCase().trim();
+  var sort = document.getElementById('sort').value;
+  var cards = [...document.querySelectorAll('.game-card')];
+  var total = 107;
+
+  cards.forEach(function(c) {
+    var matchQ = !q || c.dataset.title.includes(q);
+    var matchGenre = activeGenre === 'all' || c.dataset.genre === activeGenre;
+    var matchGen = activeGen === 'all' || c.dataset.gen === activeGen;
+    c.style.display = (matchQ && matchGenre && matchGen) ? '' : 'none';
+  });
+
+  var vis = cards.filter(c => c.style.display !== 'none');
+
+  var grid = document.getElementById('grid');
+  if (sort === 'name-asc') {
+    vis.sort((a,b) => a.dataset.title.localeCompare(b.dataset.title));
+  } else if (sort === 'name-desc') {
+    vis.sort((a,b) => b.dataset.title.localeCompare(a.dataset.title));
+  } else if (sort === 'price-asc') {
+    vis.sort((a,b) => parseFloat(a.dataset.priceNum||0) - parseFloat(b.dataset.priceNum||0));
+  } else if (sort === 'price-desc') {
+    vis.sort((a,b) => parseFloat(b.dataset.priceNum||0) - parseFloat(a.dataset.priceNum||0));
+  } else if (sort === 'gen') {
+    vis.sort((a,b) => a.dataset.gen.localeCompare(b.dataset.gen) || a.dataset.title.localeCompare(b.dataset.title));
+  }
+  vis.forEach(c => grid.appendChild(c));
+
+  document.getElementById('vis-count').textContent = vis.length;
+  document.getElementById('no-results').style.display = vis.length === 0 ? 'block' : 'none';
+}
+</script>
+</body>
+</html>

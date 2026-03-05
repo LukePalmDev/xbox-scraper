@@ -547,8 +547,8 @@ def main():
                              "Se omesso: menu interattivo")
     parser.add_argument("--filter-market", action="store_true",
                         help="Escludi giochi con <exc>MARKET nella URL (richiede url_map)")
-    parser.add_argument("--out", default="xbox_og_games.html",
-                        help="File HTML di output (default: xbox_og_games.html)")
+    parser.add_argument("--out", default="index.html",
+                        help="File HTML di output (default: index.html)")
     parser.add_argument("--batch", type=int, default=20,
                         help="BigId per richiesta API (default: 20)")
     parser.add_argument("--delay", type=float, default=0.3,

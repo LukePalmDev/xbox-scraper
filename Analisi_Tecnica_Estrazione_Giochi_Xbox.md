@@ -8,6 +8,21 @@ e presentarli in un'interfaccia HTML navigabile (ricerca, ordinamento, immagini,
 
 ---
 
+## Output e Distribuzione
+
+L'interfaccia HTML generata (`index.html`) è pubblicata automaticamente su **GitHub Pages** ad ogni push su master che modifica il file.
+
+- **URL:** `https://[username].github.io/xbox-scraper/`
+- **Deployment:** GitHub Actions workflow `.github/workflows/pages.yml`
+- **Contenuto:** Tutti i giochi retrocompatibili Xbox con filtri, ricerca e ordinamento
+
+Per rigenerare l'HTML con dati aggiornati:
+```bash
+python3 fetch_xbox_og.py --category all --out index.html
+```
+
+---
+
 ## Architettura del sistema Microsoft
 
 ```
@@ -73,7 +88,7 @@ Risposta JSON struttura:
 |------|-----------|-------|
 | `xcat-bi-urls2.json` | 109 BigId estratti manualmente dal bundle JS (formato JS, non JSON puro) | Parziale |
 | `fetch_xbox_og.py` | Script che chiama l'API e genera HTML | Funzionante ma limitato |
-| `xbox_og_games.html` | Output HTML generato | Obsoleto (61 giochi hardcodati) |
+| `index.html` | Output HTML generato | Obsoleto (61 giochi hardcodati) |
 
 **Problema critico:** lo script usa 61 ID hardcodati che non coincidono
 con quelli nel file JSON. I due asset non sono collegati.

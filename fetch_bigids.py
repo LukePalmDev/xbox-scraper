@@ -10,10 +10,18 @@ Uso:
 
 Output: bigids.json con struttura:
   {
-    "ids": ["BIGID1", "BIGID2", ...],
-    "urls": { "BIGID1": "https://xbox.com/games/...", ... },
-    "total": 4000,
-    "source": "https://..."
+    "source": "...",
+    "total": 1828,
+    "categories": {
+      "xboxOG":        { "label": "Xbox Original (OG)", "ids": [...] },
+      "xbox360":       { "label": "Xbox 360",           "ids": [...] },
+      "fullXboxOne":   { "label": "Xbox One",           "ids": [...] },
+      "fpsBoostSeriesX": { "label": "FPS Boost Series X", "ids": [...] },
+      "fpsBoostSeriesS": { "label": "FPS Boost Series S", "ids": [...] },
+      "autoHDR":       { "label": "Auto HDR",           "ids": [...] },
+      "startingat":    { "label": "Starting at...",     "ids": [...] }
+    },
+    "ids": [...tutti gli ID unici...]
   }
 
 Richiede Python 3 standard — nessuna libreria esterna necessaria.
@@ -163,8 +171,9 @@ def discover_biurls_bundle(page_url: str) -> tuple[str | None, str | None]:
         print(f"  [{i:03d}/{len(script_urls)}] Checking: {src_url[-80:]}", end="", flush=True)
         try:
             js_content = fetch_text(src_url, timeout=30)
-            if "biUrls" in js_content:
-                print(f" ✓ biUrls trovato! ({len(js_content)//1024}KB)")
+            if "gameIdArrays" in js_content or "biUrls" in js_content:
+                found = "gameIdArrays" if "gameIdArrays" in js_content else "biUrls"
+                print(f" ✓ {found} trovato! ({len(js_content)//1024}KB)")
                 return src_url, js_content
             else:
                 print(f" — ({len(js_content)//1024}KB)")
@@ -180,46 +189,70 @@ def discover_biurls_bundle(page_url: str) -> tuple[str | None, str | None]:
 # GAP 3 — Estrazione BigId dal contenuto JS
 # ---------------------------------------------------------------------------
 
-BIGID_PATTERN = re.compile(
-    r'"([A-Z0-9]{9,12})"\s*:\s*"(https://www\.xbox\.com/[^"]*)"'
-)
+# Label leggibili per ogni chiave gameIdArrays
+CATEGORY_LABELS = {
+    "xboxOG":          "Xbox Original (OG)",
+    "xbox360":         "Xbox 360",
+    "fullXboxOne":     "Xbox One",
+    "fpsBoostSeriesX": "FPS Boost Series X",
+    "fpsBoostSeriesS": "FPS Boost Series S",
+    "autoHDR":         "Auto HDR",
+    "startingat":      "Starting at...",
+    "xboxone":         "Xbox One (legacy)",
+}
+
+BIGID_RE = re.compile(r'"([A-Z0-9]{9,12})"')
+
+
+def extract_game_id_arrays(js_content: str) -> dict[str, list[str]]:
+    """
+    Estrae gameIdArrays dal bundle JS Xbox.
+    Formato sorgente:
+      gameIdArrays["xboxOG"] = ["ID1","ID2",...];
+      gameIdArrays["xbox360"] = ["ID1",...];
+    Ritorna { "xboxOG": [...], "xbox360": [...], ... }
+    """
+    result: dict[str, list[str]] = {}
+    pattern = re.compile(r'gameIdArrays\["(\w+)"\]\s*=\s*\[([^\]]*)\]')
+    for m in pattern.finditer(js_content):
+        key = m.group(1)
+        ids = BIGID_RE.findall(m.group(2))
+        if ids:  # ignora array vuoti (es. xboxone = [])
+            result[key] = ids
+    return result
+
 
 def extract_biurls_object(js_content: str) -> dict[str, str]:
-    """
-    Estrae la mappa BigId → URL dall'oggetto biUrls nel bundle JS.
-    Tenta prima il parsing strutturato, poi il fallback regex.
-    """
-    # Tentativo 1: estrazione strutturata dell'oggetto biUrls
-    match = re.search(
-        r'biUrls\s*[=:]\s*(\{[^;]{50,}\})',
-        js_content,
-        re.DOTALL
-    )
+    """Fallback: estrae biUrls se gameIdArrays non è presente."""
+    match = re.search(r'biUrls\s*[=:]\s*(\{[^;]{50,}\})', js_content, re.DOTALL)
     if match:
         try:
-            raw = match.group(1)
-            # Il JS potrebbe avere trailing comma o chiavi non quotate — normalizza
-            # Rimuovi trailing comma prima di } o ]
-            raw_clean = re.sub(r',\s*([}\]])', r'\1', raw)
+            raw_clean = re.sub(r',\s*([}\]])', r'\1', match.group(1))
             obj = json.loads(raw_clean)
             if "items" in obj and "urls" in obj.get("items", {}):
                 return obj["items"]["urls"]
         except (json.JSONDecodeError, KeyError):
             pass
-
-    # Tentativo 2: fallback regex — estrae direttamente le coppie BigId:URL
     result: dict[str, str] = {}
-    for m in BIGID_PATTERN.finditer(js_content):
-        bigid, url = m.group(1), m.group(2)
-        result[bigid] = url
-
+    for m in re.finditer(r'"([A-Z0-9]{9,12})"\s*:\s*"(https://www\.xbox\.com/[^"]*)"', js_content):
+        result[m.group(1)] = m.group(2)
     return result
 
 
-def load_from_local_file(path: str) -> dict[str, str]:
-    """Estrae BigId da un file JS locale (es. bundle scaricato manualmente)."""
+def load_from_local_file(path: str) -> dict[str, list[str]]:
+    """
+    Estrae gameIdArrays da un file JS locale.
+    Se non presente, tenta il fallback biUrls mettendo tutti gli ID in 'unknown'.
+    """
     content = Path(path).read_text(encoding="utf-8", errors="replace")
-    return extract_biurls_object(content)
+    categories = extract_game_id_arrays(content)
+    if categories:
+        return categories
+    # Fallback biUrls
+    url_map = extract_biurls_object(content)
+    if url_map:
+        return {"unknown": list(url_map.keys())}
+    return {}
 
 
 # ---------------------------------------------------------------------------
@@ -238,20 +271,22 @@ def main():
                         help="File JSON di output (default: bigids.json)")
     args = parser.parse_args()
 
-    url_map: dict[str, str] = {}
+    categories: dict[str, list[str]] = {}
     source = "local"
 
     if args.input:
-        # Modalità locale: file JS già scaricato
         print(f"Lettura da file locale: {args.input}")
-        url_map = load_from_local_file(args.input)
+        categories = load_from_local_file(args.input)
         source = args.input
 
     elif args.bundle:
-        # Modalità bundle diretto: URL del JS noto
         print(f"Download bundle diretto: {args.bundle}")
         js_content = fetch_text(args.bundle, timeout=60)
-        url_map = extract_biurls_object(js_content)
+        categories = extract_game_id_arrays(js_content)
+        if not categories:
+            url_map = extract_biurls_object(js_content)
+            if url_map:
+                categories = {"unknown": list(url_map.keys())}
         source = args.bundle
 
     else:
@@ -261,14 +296,18 @@ def main():
             print(f"\n--- Provo: {page_url}")
             bundle_url, js_content = discover_biurls_bundle(page_url)
             if js_content:
-                url_map = extract_biurls_object(js_content)
+                categories = extract_game_id_arrays(js_content)
+                if not categories:
+                    url_map = extract_biurls_object(js_content)
+                    if url_map:
+                        categories = {"unknown": list(url_map.keys())}
                 source = bundle_url or page_url
-                if url_map:
+                if categories:
                     break
                 else:
                     print("  ⚠ Bundle trovato ma nessun BigId estratto, provo la prossima pagina...")
 
-    if not url_map:
+    if not categories:
         print("\n✗ Nessun BigId trovato.")
         print("\nSuggerimenti:")
         print("  1. Scarica manualmente il bundle JS dal DevTools di Chrome (tab Network → JS)")
@@ -277,22 +316,33 @@ def main():
         print("  2. Verifica che la pagina Xbox non abbia cambiato struttura")
         sys.exit(1)
 
-    ids = list(dict.fromkeys(url_map.keys()))  # deduplicazione
-    print(f"\n✅ Estratti {len(ids)} BigId unici")
+    # Costruisci output con struttura per categoria
+    all_ids_seen: set[str] = set()
+    all_ids_ordered: list[str] = []
+    cats_out: dict[str, dict] = {}
+    for key, ids in categories.items():
+        deduped = list(dict.fromkeys(ids))
+        cats_out[key] = {
+            "label": CATEGORY_LABELS.get(key, key),
+            "count": len(deduped),
+            "ids": deduped,
+        }
+        for gid in deduped:
+            if gid not in all_ids_seen:
+                all_ids_seen.add(gid)
+                all_ids_ordered.append(gid)
+        print(f"  {key:20s} → {len(deduped):4d} ID  ({CATEGORY_LABELS.get(key, key)})")
+
+    print(f"\n✅ Totale ID unici: {len(all_ids_ordered)}")
 
     output = {
-        "total": len(ids),
         "source": source,
-        "ids": ids,
-        "urls": url_map,
+        "total": len(all_ids_ordered),
+        "categories": cats_out,
+        "ids": all_ids_ordered,
     }
     Path(args.out).write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"   Salvato in: {args.out}")
-
-    # Mostra anteprima
-    print(f"\nPrime 5 entry:")
-    for gid in ids[:5]:
-        print(f"  {gid}: {url_map[gid][:70]}")
 
 
 if __name__ == "__main__":

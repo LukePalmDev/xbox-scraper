@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "HTML Preview Server",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "."],
+      "port": 8765
+    },
+    {
+      "name": "Scraper (tutti i giochi)",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["fetch_xbox_og.py", "--category", "all", "--batch", "20", "--delay", "0.5"],
+      "port": 0
+    },
+    {
+      "name": "Scraper (Xbox One)",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["fetch_xbox_og.py", "--category", "xone", "--batch", "20", "--delay", "0.5"],
+      "port": 0
+    },
+    {
+      "name": "BigId Discovery",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["fetch_bigids.py"],
+      "port": 0
+    }
+  ]
+}

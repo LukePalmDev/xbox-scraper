@@ -361,7 +361,10 @@ def scrape(
         log.info("Fetching concorrente con %d workers", workers)
 
         def _fetch_one(batch_idx: int, batch: list[str]):
-            time.sleep(delay * batch_idx / workers)  # Sfalsamento iniziale
+            # Sfalsamento SOLO per il primo wave (0..workers-1) per non saturare l'API.
+            # batch_idx % workers mantiene il ritardo fisso e non crescente.
+            if batch_idx < workers:
+                time.sleep(delay * batch_idx / workers)
             return batch, fetch_batch(batch, market, lang, ssl_ctx=ssl_ctx, ms_cv=ms_cv)
 
         with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -653,8 +656,8 @@ def main():
                         help="File HTML di output (default: index.html)")
     parser.add_argument("--json-out", metavar="FILE",
                         help="File JSON con i dati dei giochi (default: games.json)")
-    parser.add_argument("--batch", type=int, default=20,
-                        help="BigId per richiesta API (default: 20)")
+    parser.add_argument("--batch", type=int, default=50,
+                        help="BigId per richiesta API (default: 50, max: 50)")
     parser.add_argument("--delay", type=float, default=0.3,
                         help="Secondi tra batch (default: 0.3)")
     parser.add_argument("--resume", action="store_true",

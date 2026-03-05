@@ -10,13 +10,13 @@
     {
       "name": "Scraper (tutti i giochi)",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["fetch_xbox_og.py", "--category", "all", "--batch", "20", "--delay", "0.5"],
+      "runtimeArgs": ["fetch_xbox_og.py", "--category", "all", "--batch", "20", "--delay", "0.5", "--json-out", "games.json"],
       "port": 0
     },
     {
       "name": "Scraper (Xbox One)",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["fetch_xbox_og.py", "--category", "xone", "--batch", "20", "--delay", "0.5"],
+      "runtimeArgs": ["fetch_xbox_og.py", "--category", "fullXboxOne", "--batch", "20", "--delay", "0.5", "--json-out", "games.json"],
       "port": 0
     },
     {

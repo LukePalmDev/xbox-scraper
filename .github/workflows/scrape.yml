@@ -1,0 +1,138 @@
+name: Scrape Xbox Catalog
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # Ogni lunedi alle 6:00 UTC
+  workflow_dispatch:
+    inputs:
+      category:
+        description: 'Categoria da scrappare'
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - xboxOG
+          - xbox360
+          - fullXboxOne
+          - fpsBoostSeriesX
+          - fpsBoostSeriesS
+          - autoHDR
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Discover BigIDs
+        id: discover
+        continue-on-error: true
+        run: python3 fetch_bigids.py --out bigids_new.json
+
+      - name: Use new or fallback BigIDs
+        run: |
+          if [ -f bigids_new.json ]; then
+            mv bigids_new.json bigids.json
+            echo "discovery=success" >> "$GITHUB_ENV"
+          else
+            echo "Discovery fallito, uso bigids.json esistente"
+            echo "discovery=fallback" >> "$GITHUB_ENV"
+          fi
+
+      - name: Scrape catalog
+        run: |
+          CATEGORY="${{ github.event.inputs.category || 'all' }}"
+          python3 fetch_xbox_og.py \
+            --category "$CATEGORY" \
+            --batch 20 \
+            --delay 0.5 \
+            --workers 3 \
+            --out index.html \
+            --json-out games.json
+
+      - name: Detect changes
+        id: changes
+        run: |
+          python3 -c "
+          import json, os
+          new = json.load(open('games.json'))
+          new_ids = {g['id'] for g in new}
+
+          # Confronta con versione precedente (se esiste nel repo)
+          old_path = 'games_old.json'
+          os.system('git show HEAD:games.json > games_old.json 2>/dev/null || true')
+
+          added, removed = set(), set()
+          if os.path.exists(old_path) and os.path.getsize(old_path) > 0:
+              try:
+                  old = json.load(open(old_path))
+                  old_ids = {g['id'] for g in old}
+                  added = new_ids - old_ids
+                  removed = old_ids - new_ids
+              except (json.JSONDecodeError, KeyError):
+                  pass
+          os.remove(old_path) if os.path.exists(old_path) else None
+
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+              f.write(f'ADDED={len(added)}\n')
+              f.write(f'REMOVED={len(removed)}\n')
+
+          if added:
+              print(f'Nuovi giochi ({len(added)}):')
+              # Trova i titoli dei giochi aggiunti
+              for g in new:
+                  if g['id'] in added:
+                      print(f'  + {g[\"title\"]}')
+          if removed:
+              print(f'Giochi rimossi ({len(removed)}): {removed}')
+          "
+
+      - name: Scrape summary
+        run: |
+          GAMES=$(python3 -c "import json; print(len(json.load(open('games.json'))))")
+          BIGIDS=$(python3 -c "import json; print(json.load(open('bigids.json'))['total'])")
+          HTML_SIZE=$(du -h index.html | cut -f1)
+          JSON_SIZE=$(du -h games.json | cut -f1)
+
+          echo "## Xbox Catalog Scrape Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Metrica | Valore |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| BigIDs disponibili | $BIGIDS |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Giochi scrappati | $GAMES |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Nuovi giochi | ${{ env.ADDED }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Giochi rimossi | ${{ env.REMOVED }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Dimensione HTML | $HTML_SIZE |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Dimensione JSON | $JSON_SIZE |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Discovery BigID | ${{ env.discovery }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Categoria | ${{ github.event.inputs.category || 'all' }} |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add bigids.json index.html games.json
+          if git diff --cached --quiet; then
+            echo "Nessuna modifica da committare"
+          else
+            GAMES=$(python3 -c "import json; print(len(json.load(open('games.json'))))")
+            CHANGE_MSG=""
+            if [ "${{ env.ADDED }}" != "0" ]; then
+              CHANGE_MSG="$CHANGE_MSG, +${{ env.ADDED }} nuovi"
+            fi
+            if [ "${{ env.REMOVED }}" != "0" ]; then
+              CHANGE_MSG="$CHANGE_MSG, -${{ env.REMOVED }} rimossi"
+            fi
+            git commit -m "Auto-update: Xbox catalog ($GAMES giochi${CHANGE_MSG}) $(date +%Y-%m-%d)"
+            git push
+          fi

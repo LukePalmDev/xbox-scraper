@@ -15,33 +15,31 @@ Uso:
 Richiede Python 3 standard — nessuna libreria esterna necessaria.
 """
 
-import urllib.request
-import urllib.error
 import json
 import time
 import html as html_escape
-import ssl
 import re
 import argparse
 import sys
+import logging
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# SSL
-# ---------------------------------------------------------------------------
-ssl_ctx = ssl.create_default_context()
-ssl_ctx.check_hostname = False
-ssl_ctx.verify_mode = ssl.CERT_NONE
+from scraper_utils import (
+    create_ssl_context,
+    HEADERS_JSON,
+    fetch_json,
+    generate_ms_cv,
+)
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-    "Accept": "application/json",
-}
+log = logging.getLogger(__name__)
 
 CATALOG_URL = (
     "https://displaycatalog.mp.microsoft.com/v7.0/products"
-    "?bigIds={ids}&market={market}&languages={lang}&MS-CV=DGU1mcuYo0WMMp+F.1"
+    "?bigIds={ids}&market={market}&languages={lang}&MS-CV={mscv}"
 )
+
+# Regex compilata per filtro mercato
+_EXC_RE = re.compile(r'<exc>([^"]+)')
 
 
 # ---------------------------------------------------------------------------
@@ -78,7 +76,7 @@ def load_ids(
         else:
             sys.exit("Errore: nessun file BigId trovato. Esegui prima fetch_bigids.py")
 
-    print(f"Caricamento BigId da: {p}")
+    log.info("Caricamento BigId da: %s", p)
 
     # Formato JS (biUrls legacy)
     content_start = p.read_text(encoding="utf-8").strip()
@@ -96,9 +94,10 @@ def load_ids(
         id_to_cat: dict[str, str] = {}
         for key, cat in categories.items():
             cat_ids = cat["ids"] if isinstance(cat, dict) else cat
+            label = _cat_label(key, categories)
             for gid in cat_ids:
                 if gid not in id_to_cat:
-                    id_to_cat[gid] = _cat_label(key, categories)
+                    id_to_cat[gid] = label
         return list(dict.fromkeys(ids)), id_to_cat
 
     if category_key not in categories:
@@ -111,7 +110,7 @@ def load_ids(
     label = _cat_label(category_key, categories)
     id_to_cat = {gid: label for gid in ids}
 
-    print(f"  → {len(ids)} BigId unici [{label}]")
+    log.info("  -> %d BigId unici [%s]", len(ids), label)
     return ids, id_to_cat
 
 
@@ -156,9 +155,9 @@ def select_category_interactive(bigids_path: str | None = None) -> str:
         pass
 
     print()
-    print("╔══════════════════════════════════════════════╗")
-    print("║        XBOX SCRAPER — Selezione categoria    ║")
-    print("╚══════════════════════════════════════════════╝")
+    print("+" + "=" * 46 + "+")
+    print("|        XBOX SCRAPER — Selezione categoria    |")
+    print("+" + "=" * 46 + "+")
     print()
 
     options = [("all", "Tutti i giochi", sum(
@@ -193,7 +192,7 @@ def select_category_interactive(bigids_path: str | None = None) -> str:
         print(f"  Inserisci un numero tra 1 e {len(options)}.")
 
     chosen_label = next(label for key, label, _ in options if key == chosen_key)
-    print(f"\n  → Selezionato: {chosen_label}")
+    print(f"\n  -> Selezionato: {chosen_label}")
     return chosen_key
 
 
@@ -208,43 +207,33 @@ def filter_by_market(ids: list[str], url_map: dict[str, str], market: str) -> li
     filtered, excluded = [], 0
     for game_id in ids:
         url = url_map.get(game_id, "")
-        exc_match = re.search(r'<exc>([^"]+)', url)
+        exc_match = _EXC_RE.search(url)
         if exc_match:
             excl = [m.strip().upper() for m in exc_match.group(1).split(",")]
             if any(market_upper in m for m in excl):
                 excluded += 1
                 continue
         filtered.append(game_id)
-    print(f"  → Filtro mercato {market}: {excluded} esclusi, {len(filtered)} rimasti")
+    log.info("  -> Filtro mercato %s: %d esclusi, %d rimasti", market, excluded, len(filtered))
     return filtered
 
 
 # ---------------------------------------------------------------------------
-# GAP 4 — Fetch con retry e backoff esponenziale
+# Fetch con retry e backoff esponenziale
 # ---------------------------------------------------------------------------
 
-def fetch_batch(ids: list[str], market: str, lang: str, max_retries: int = 3) -> list[dict]:
-    url = CATALOG_URL.format(ids=",".join(ids), market=market, lang=lang)
-    for attempt in range(max_retries):
-        try:
-            req = urllib.request.Request(url, headers=HEADERS)
-            with urllib.request.urlopen(req, timeout=15, context=ssl_ctx) as resp:
-                data = json.loads(resp.read().decode())
-            return data.get("Products", [])
-        except urllib.error.HTTPError as e:
-            if e.code in (429, 503):
-                wait = 2 ** (attempt + 2)
-                print(f"\n  ⚠ Rate limit ({e.code}), attendo {wait}s...")
-                time.sleep(wait)
-            elif attempt == max_retries - 1:
-                raise
-            else:
-                time.sleep(2 ** attempt)
-        except Exception:
-            if attempt == max_retries - 1:
-                raise
-            time.sleep(2 ** attempt)
-    return []
+def fetch_batch(
+    ids: list[str], market: str, lang: str,
+    ssl_ctx=None, ms_cv: str = "",
+    max_retries: int = 3,
+) -> list[dict]:
+    """Scarica un batch di prodotti dalla Display Catalog API."""
+    url = CATALOG_URL.format(
+        ids=",".join(ids), market=market, lang=lang,
+        mscv=ms_cv or generate_ms_cv(),
+    )
+    data = fetch_json(url, ssl_ctx=ssl_ctx, max_retries=max_retries, timeout=15)
+    return data.get("Products", [])
 
 
 def parse_product(p: dict, game_id: str, source_category: str) -> dict:
@@ -282,16 +271,44 @@ def parse_product(p: dict, game_id: str, source_category: str) -> dict:
     categories: list[str] = props.get("Categories") or []
     genre = categories[0] if categories else (props.get("Category") or "")
 
+    # Link allo store Xbox
+    pid = p.get("ProductId", game_id)
+    store_url = f"https://www.xbox.com/games/store/-/{pid}"
+
     return {
-        "id": p.get("ProductId", game_id),
+        "id": pid,
         "title": title,
         "img": img_url,
         "price": price_str,
         "price_num": price_num,
-        # Categoria dalla sorgente (gameIdArrays), non dall'API
         "source_category": source_category,
         "genre": genre,
+        "url": store_url,
     }
+
+
+def _process_batch_result(
+    batch: list[str],
+    products: list[dict],
+    id_to_cat: dict[str, str],
+    seen_ids: set[str],
+) -> tuple[list[dict], list[str]]:
+    """Processa i risultati di un batch: parse, deduplica, traccia missing."""
+    new_games: list[dict] = []
+    batch_missing: list[str] = []
+    returned_ids: set[str] = set()
+    for p in products:
+        pid = p.get("ProductId", "")
+        returned_ids.add(pid)
+        source_cat = id_to_cat.get(pid, id_to_cat.get(batch[0], ""))
+        parsed = parse_product(p, pid, source_cat)
+        if parsed["id"] not in seen_ids:
+            new_games.append(parsed)
+            seen_ids.add(parsed["id"])
+    for bid in batch:
+        if bid not in returned_ids and bid not in seen_ids:
+            batch_missing.append(bid)
+    return new_games, batch_missing
 
 
 def scrape(
@@ -301,35 +318,73 @@ def scrape(
     lang: str,
     batch_size: int,
     delay: float,
-) -> tuple[list[dict], list[str]]:
+    ssl_ctx=None,
+    workers: int = 1,
+) -> tuple[list[dict], list[str], list[str]]:
+    """
+    Scraping con retry e tracciamento errori per singolo ID.
+    workers > 1 abilita fetching concorrente.
+
+    Ritorna (games, failed_ids, missing_ids) dove:
+    - failed_ids: batch falliti per errore di rete
+    - missing_ids: ID richiesti ma non restituiti dall'API (delisted/invalidi)
+    """
     games: list[dict] = []
     failed: list[str] = []
-    total_batches = (len(ids) + batch_size - 1) // batch_size
+    missing: list[str] = []
+    seen_ids: set[str] = set()
+    ms_cv = generate_ms_cv()
 
-    for batch_num, start in enumerate(range(0, len(ids), batch_size), 1):
-        batch = ids[start:start + batch_size]
-        print(f"[{batch_num:03d}/{total_batches}] batch {start+1}–{start+len(batch)} ... ", end="", flush=True)
-        try:
-            products = fetch_batch(batch, market, lang)
-            added = 0
-            seen_ids = {g["id"] for g in games}
-            for p in products:
-                pid = p.get("ProductId", "")
-                source_cat = id_to_cat.get(pid, id_to_cat.get(batch[0], ""))
-                parsed = parse_product(p, pid, source_cat)
-                if parsed["id"] not in seen_ids:
-                    games.append(parsed)
-                    seen_ids.add(parsed["id"])
-                    added += 1
-            print(f"✓  {len(products)} ricevuti, {added} aggiunti")
-        except Exception as e:
-            failed.extend(batch)
-            print(f"✗  {e}")
+    # Prepara tutti i batch
+    batches = [ids[i:i + batch_size] for i in range(0, len(ids), batch_size)]
+    total_batches = len(batches)
 
-        if batch_num < total_batches:
-            time.sleep(delay)
+    if workers <= 1:
+        # Modalita sequenziale (default)
+        for batch_num, batch in enumerate(batches, 1):
+            log.info("[%03d/%d] batch %d-%d ...", batch_num, total_batches,
+                     (batch_num - 1) * batch_size + 1, (batch_num - 1) * batch_size + len(batch))
+            try:
+                products = fetch_batch(batch, market, lang, ssl_ctx=ssl_ctx, ms_cv=ms_cv)
+                new_games, batch_missing = _process_batch_result(batch, products, id_to_cat, seen_ids)
+                games.extend(new_games)
+                missing.extend(batch_missing)
+                log.info("  -> %d ricevuti, %d aggiunti", len(products), len(new_games))
+            except Exception as e:
+                failed.extend(batch)
+                log.error("  -> ERRORE: %s", e)
+            if batch_num < total_batches:
+                time.sleep(delay)
+    else:
+        # Modalita concorrente
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        log.info("Fetching concorrente con %d workers", workers)
 
-    return games, failed
+        def _fetch_one(batch_idx: int, batch: list[str]):
+            time.sleep(delay * batch_idx / workers)  # Sfalsamento iniziale
+            return batch, fetch_batch(batch, market, lang, ssl_ctx=ssl_ctx, ms_cv=ms_cv)
+
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {
+                executor.submit(_fetch_one, i, batch): i
+                for i, batch in enumerate(batches)
+            }
+            completed = 0
+            for future in as_completed(futures):
+                completed += 1
+                try:
+                    batch, products = future.result()
+                    new_games, batch_missing = _process_batch_result(batch, products, id_to_cat, seen_ids)
+                    games.extend(new_games)
+                    missing.extend(batch_missing)
+                    log.info("[%03d/%d] %d ricevuti, %d aggiunti",
+                             completed, total_batches, len(products), len(new_games))
+                except Exception as e:
+                    batch_idx = futures[future]
+                    failed.extend(batches[batch_idx])
+                    log.error("[%03d/%d] ERRORE: %s", completed, total_batches, e)
+
+    return games, failed, missing
 
 
 # ---------------------------------------------------------------------------
@@ -346,22 +401,44 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
     all_genres = sorted({g["genre"] for g in games if g["genre"]})
 
     def make_pills(items: list[str], filter_type: str, all_label: str) -> str:
-        pills = f'<button class="pill active" data-filter-{filter_type}="all" onclick="setFilter(\'{filter_type}\',\'all\',this)">{all_label}</button>\n'
+        pills = f'<button class="pill active" data-filter-{filter_type}="all">{all_label}</button>\n'
         for item in items:
             slug = slugify(item)
             esc = html_escape.escape(item)
-            pills += f'    <button class="pill" data-filter-{filter_type}="{slug}" onclick="setFilter(\'{filter_type}\',\'{slug}\',this)">{esc}</button>\n'
+            pills += f'    <button class="pill" data-filter-{filter_type}="{slug}">{esc}</button>\n'
         return pills
 
     cat_pills = make_pills(all_source_cats, "cat", "Tutte le console")
     genre_pills = make_pills(all_genres, "genre", "Tutti i generi")
 
+    # Statistiche per dashboard
+    priced_games = [g for g in games if g["price_num"] > 0]
+    avg_price = sum(g["price_num"] for g in priced_games) / len(priced_games) if priced_games else 0
+    free_count = sum(1 for g in games if g["price_num"] == 0)
+    cat_counts = {}
+    for g in games:
+        cat = g["source_category"] or "Sconosciuto"
+        cat_counts[cat] = cat_counts.get(cat, 0) + 1
+
+    stats_items = "".join(
+        f'<div class="stat-item"><div class="stat-num">{count}</div><div class="stat-lbl">{html_escape.escape(cat)}</div></div>'
+        for cat, count in sorted(cat_counts.items(), key=lambda x: -x[1])
+    )
+    stats_html = f"""
+    <div class="stats-bar">
+      <div class="stat-item"><div class="stat-num">{len(games)}</div><div class="stat-lbl">Totale</div></div>
+      <div class="stat-item"><div class="stat-num">{free_count}</div><div class="stat-lbl">Gratis</div></div>
+      <div class="stat-item"><div class="stat-num">{avg_price:.2f}</div><div class="stat-lbl">Prezzo medio</div></div>
+      {stats_items}
+    </div>"""
+
     cards = ""
     for g in sorted(games, key=lambda x: x["title"].lower()):
         t = html_escape.escape(g["title"])
+        store_url = html_escape.escape(g.get("url", ""))
         img_tag = (
             f'<img src="{g["img"]}" alt="{t}" loading="lazy">'
-            if g["img"] else '<div class="no-img">🎮</div>'
+            if g["img"] else '<div class="no-img">&#x1f3ae;</div>'
         )
         price_display = g["price"] or "—"
         cat_slug = slugify(g["source_category"]) if g["source_category"] else "unknown"
@@ -369,15 +446,17 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
         cat_label_esc = html_escape.escape(g["source_category"] or "—")
         genre_label_esc = html_escape.escape(g["genre"]) if g["genre"] else "—"
 
+        title_html = f'<a href="{store_url}" target="_blank" rel="noopener" class="card-link">{t}</a>' if store_url else t
+
         cards += f"""
-        <div class="game-card"
+        <div class="game-card" role="listitem"
              data-title="{t.lower()}"
              data-cat="{cat_slug}"
              data-genre="{genre_slug}"
              data-price-num="{g['price_num']:.2f}">
           <div class="img-wrap">{img_tag}</div>
           <div class="card-body">
-            <div class="card-title">{t}</div>
+            <div class="card-title">{title_html}</div>
             <div class="card-tags">
               <span class="tag tag-cat">{cat_label_esc}</span>
               <span class="tag tag-genre">{genre_label_esc}</span>
@@ -399,7 +478,7 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
 <title>Xbox — {total} giochi ({category_label} · {market})</title>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
-  :root {{ --green:#00e676; --green-dim:#00b357; --dark:#060a0e; --panel:#0c1318; --border:#1a2a1a; --text:#c8e6c9; --muted:#4a6a4a; --pill-bg:#0f1f0f; }}
+  :root {{ --green:#00e676; --green-dim:#00b357; --dark:#060a0e; --panel:#0c1318; --border:#1a2a1a; --text:#c8e6c9; --muted:#7a9a7a; --pill-bg:#0f1f0f; }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   body {{ background:var(--dark); color:var(--text); font-family:'Rajdhani',sans-serif; min-height:100vh; }}
   body::before {{ content:''; position:fixed; inset:0; background-image:linear-gradient(rgba(0,230,118,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,230,118,.03) 1px,transparent 1px); background-size:40px 40px; pointer-events:none; z-index:0; }}
@@ -424,9 +503,10 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
   .pill {{ background:var(--pill-bg); border:1px solid var(--border); color:var(--muted); padding:4px 10px; font-family:'Share Tech Mono',monospace; font-size:.65rem; cursor:pointer; transition:all .15s; white-space:nowrap; }}
   .pill:hover {{ border-color:var(--green-dim); color:var(--text); }}
   .pill.active {{ background:var(--green-dim); border-color:var(--green); color:var(--dark); font-weight:600; }}
+  .pill:focus-visible {{ outline:2px solid var(--green); outline-offset:2px; }}
   .no-results {{ display:none; position:relative; z-index:1; padding:60px 40px; text-align:center; font-family:'Share Tech Mono',monospace; color:var(--muted); }}
   .game-grid {{ position:relative; z-index:1; padding:18px 40px 60px; display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:10px; }}
-  .game-card {{ background:var(--panel); border:1px solid var(--border); overflow:hidden; transition:border-color .2s,transform .15s; }}
+  .game-card {{ background:var(--panel); border:1px solid var(--border); overflow:hidden; transition:border-color .2s,transform .15s; content-visibility:auto; contain-intrinsic-size:200px 280px; }}
   .game-card:hover {{ border-color:var(--green-dim); transform:translateY(-3px); }}
   .img-wrap {{ width:100%; aspect-ratio:16/9; background:#0a180a; overflow:hidden; }}
   .img-wrap img {{ width:100%; height:100%; object-fit:cover; display:block; }}
@@ -439,8 +519,15 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
   .tag-genre {{ background:#0a0a1a; border:1px solid #334; color:#8899bb; }}
   .card-meta {{ display:flex; align-items:center; justify-content:space-between; }}
   .card-price {{ font-family:'Share Tech Mono',monospace; font-size:.7rem; color:var(--green); }}
+  .card-link {{ color:var(--text); text-decoration:none; }}
+  .card-link:hover {{ color:var(--green); }}
   .card-id {{ font-family:'Share Tech Mono',monospace; font-size:.55rem; color:var(--muted); margin-top:3px; }}
+  .stats-bar {{ position:relative; z-index:1; display:flex; gap:2px; padding:10px 40px; border-bottom:1px solid var(--border); flex-wrap:wrap; }}
+  .stat-item {{ background:var(--panel); border:1px solid var(--border); padding:8px 14px; text-align:center; min-width:80px; }}
+  .stat-num {{ font-family:'Share Tech Mono',monospace; font-size:1.1rem; color:var(--green); font-weight:700; }}
+  .stat-lbl {{ font-family:'Share Tech Mono',monospace; font-size:.55rem; color:var(--muted); letter-spacing:.05em; margin-top:2px; }}
   @media(max-width:600px) {{
+    .stats-bar {{ padding-left:16px; padding-right:16px; }}
     header,.controls,.game-grid {{ padding-left:16px; padding-right:16px; }}
     h1 {{ font-size:1.4rem; }}
     .game-grid {{ grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); }}
@@ -450,78 +537,93 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
 <body>
 <header>
   <div class="logo">
-    <div class="ring">🎮</div>
+    <div class="ring">&#x1f3ae;</div>
     <div>
       <h1>Xbox <span>Catalog</span></h1>
-      <div class="sub">{html_escape.escape(category_label).upper()} · {market}</div>
+      <div class="sub">{html_escape.escape(category_label).upper()} &middot; {market}</div>
     </div>
   </div>
   <div class="count"><span id="vis-count">{total}</span> / {total} giochi</div>
 </header>
 
-<div class="controls">
+{stats_html}
+
+<div class="controls" role="search">
   <div class="ctrl-row">
     <div class="search-wrap">
-      <span class="si">⌕</span>
-      <input type="text" id="search" placeholder="Cerca titolo..." oninput="applyFilters()">
+      <span class="si">&#x2315;</span>
+      <input type="text" id="search" placeholder="Cerca titolo..." aria-label="Cerca gioco per titolo">
     </div>
-    <select id="sort" onchange="applyFilters()">
-      <option value="name-asc">Nome A→Z</option>
-      <option value="name-desc">Nome Z→A</option>
-      <option value="price-asc">Prezzo ↑</option>
-      <option value="price-desc">Prezzo ↓</option>
+    <select id="sort" aria-label="Ordina per">
+      <option value="name-asc">Nome A-Z</option>
+      <option value="name-desc">Nome Z-A</option>
+      <option value="price-asc">Prezzo crescente</option>
+      <option value="price-desc">Prezzo decrescente</option>
       <option value="cat">Console</option>
     </select>
   </div>
-  <div class="filter-row">
+  <div class="filter-row" role="group" aria-label="Filtra per console">
     <span class="filter-label">CONSOLE:</span>
     {cat_pills}  </div>
-  <div class="filter-row">
+  <div class="filter-row" role="group" aria-label="Filtra per genere">
     <span class="filter-label">GENERE:</span>
     {genre_pills}  </div>
 </div>
 
-<div class="no-results" id="no-results">// nessun risultato</div>
-<div class="game-grid" id="grid">{cards}</div>
+<div class="no-results" id="no-results" aria-live="polite">// nessun risultato</div>
+<div class="game-grid" id="grid" role="list" aria-label="Catalogo giochi">{cards}</div>
 
 <script>
 var activeCat = 'all';
 var activeGenre = 'all';
+var _debounceTimer;
 
-function setFilter(type, value, btn) {{
+// Event delegation — niente inline onclick
+document.querySelector('.controls').addEventListener('click', function(e) {{
+  var pill = e.target.closest('.pill');
+  if (!pill) return;
+  var type = pill.hasAttribute('data-filter-cat') ? 'cat' : 'genre';
+  var value = pill.getAttribute('data-filter-' + type);
   if (type === 'cat') {{
     activeCat = value;
-    document.querySelectorAll('[data-filter-cat]').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('[data-filter-cat]').forEach(function(b) {{ b.classList.remove('active'); }});
   }} else {{
     activeGenre = value;
-    document.querySelectorAll('[data-filter-genre]').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('[data-filter-genre]').forEach(function(b) {{ b.classList.remove('active'); }});
   }}
-  btn.classList.add('active');
+  pill.classList.add('active');
   applyFilters();
-}}
+}});
+
+document.getElementById('search').addEventListener('input', function() {{
+  clearTimeout(_debounceTimer);
+  _debounceTimer = setTimeout(applyFilters, 200);
+}});
+
+document.getElementById('sort').addEventListener('change', applyFilters);
 
 function applyFilters() {{
   var q = document.getElementById('search').value.toLowerCase().trim();
   var sort = document.getElementById('sort').value;
-  var cards = [...document.querySelectorAll('.game-card')];
+  var cards = [].slice.call(document.querySelectorAll('.game-card'));
 
   cards.forEach(function(c) {{
-    var ok = (!q || c.dataset.title.includes(q))
+    var ok = (!q || c.dataset.title.indexOf(q) !== -1)
           && (activeCat === 'all' || c.dataset.cat === activeCat)
           && (activeGenre === 'all' || c.dataset.genre === activeGenre);
     c.style.display = ok ? '' : 'none';
   }});
 
-  var vis = cards.filter(c => c.style.display !== 'none');
+  var vis = cards.filter(function(c) {{ return c.style.display !== 'none'; }});
   var grid = document.getElementById('grid');
 
-  if (sort === 'name-asc')   vis.sort((a,b) => a.dataset.title.localeCompare(b.dataset.title));
-  else if (sort === 'name-desc')  vis.sort((a,b) => b.dataset.title.localeCompare(a.dataset.title));
-  else if (sort === 'price-asc')  vis.sort((a,b) => parseFloat(a.dataset.priceNum||0) - parseFloat(b.dataset.priceNum||0));
-  else if (sort === 'price-desc') vis.sort((a,b) => parseFloat(b.dataset.priceNum||0) - parseFloat(a.dataset.priceNum||0));
-  else if (sort === 'cat')        vis.sort((a,b) => a.dataset.cat.localeCompare(b.dataset.cat) || a.dataset.title.localeCompare(b.dataset.title));
+  if (sort === 'name-asc')        vis.sort(function(a,b) {{ return a.dataset.title.localeCompare(b.dataset.title); }});
+  else if (sort === 'name-desc')  vis.sort(function(a,b) {{ return b.dataset.title.localeCompare(a.dataset.title); }});
+  else if (sort === 'price-asc')  vis.sort(function(a,b) {{ return parseFloat(a.dataset.priceNum||0) - parseFloat(b.dataset.priceNum||0); }});
+  else if (sort === 'price-desc') vis.sort(function(a,b) {{ return parseFloat(b.dataset.priceNum||0) - parseFloat(a.dataset.priceNum||0); }});
+  else if (sort === 'cat')        vis.sort(function(a,b) {{ return a.dataset.cat.localeCompare(b.dataset.cat) || a.dataset.title.localeCompare(b.dataset.title); }});
 
-  vis.forEach(c => grid.appendChild(c));
+  vis.forEach(function(c) {{ grid.appendChild(c); }});
   document.getElementById('vis-count').textContent = vis.length;
   document.getElementById('no-results').style.display = vis.length === 0 ? 'block' : 'none';
 }}
@@ -549,17 +651,36 @@ def main():
                         help="Escludi giochi con <exc>MARKET nella URL (richiede url_map)")
     parser.add_argument("--out", default="index.html",
                         help="File HTML di output (default: index.html)")
+    parser.add_argument("--json-out", metavar="FILE",
+                        help="File JSON con i dati dei giochi (default: games.json)")
     parser.add_argument("--batch", type=int, default=20,
                         help="BigId per richiesta API (default: 20)")
     parser.add_argument("--delay", type=float, default=0.3,
                         help="Secondi tra batch (default: 0.3)")
     parser.add_argument("--resume", action="store_true",
                         help="Riprendi da failed_ids.json")
+    parser.add_argument("--workers", type=int, default=1,
+                        help="Worker concorrenti per fetch (default: 1, max consigliato: 3)")
+    parser.add_argument("--no-verify-ssl", action="store_true",
+                        help="Disabilita verifica certificati SSL")
+    parser.add_argument("--verbose", "-v", action="store_true",
+                        help="Output dettagliato")
     args = parser.parse_args()
 
-    # FEATURE A — Selezione categoria
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+    ssl_ctx = create_ssl_context(verify=not args.no_verify_ssl)
+
+    # FEATURE A — Selezione categoria (non-interattivo in CI)
     if args.category:
         category_key = args.category
+    elif not sys.stdin.isatty():
+        category_key = "all"
+        log.info("Modalita non-interattiva: uso --category all")
     else:
         category_key = select_category_interactive(args.ids)
 
@@ -568,9 +689,8 @@ def main():
         failed_data = json.loads(Path("failed_ids.json").read_text())
         ids = failed_data if isinstance(failed_data, list) else failed_data.get("ids", [])
         id_to_cat: dict[str, str] = {}
-        print(f"\nResume: {len(ids)} ID da ritentare")
+        log.info("Resume: %d ID da ritentare", len(ids))
     else:
-        print()
         ids, id_to_cat = load_ids(args.ids, category_key)
 
     # Ottieni la label della categoria per il titolo HTML
@@ -590,24 +710,38 @@ def main():
     except Exception:
         pass
 
-    print(f"\nAvvio scraping: {len(ids)} giochi · [{cat_label}] · batch={args.batch} · delay={args.delay}s\n")
+    log.info("Avvio scraping: %d giochi - [%s] - batch=%d - delay=%.1fs",
+             len(ids), cat_label, args.batch, args.delay)
 
-    # GAP 4 — Scraping con retry
-    games, failed = scrape(ids, id_to_cat, args.market, args.lang, args.batch, args.delay)
+    # Scraping con retry
+    games, failed, missing = scrape(
+        ids, id_to_cat, args.market, args.lang, args.batch, args.delay,
+        ssl_ctx=ssl_ctx, workers=args.workers,
+    )
 
     if failed:
         Path("failed_ids.json").write_text(json.dumps(failed, indent=2))
-        print(f"\n⚠ {len(failed)} ID falliti salvati in failed_ids.json")
+        log.warning("%d ID falliti salvati in failed_ids.json", len(failed))
     elif Path("failed_ids.json").exists():
         Path("failed_ids.json").unlink()
 
-    # FEATURE C — Genera HTML
+    if missing:
+        log.info("%d ID non restituiti dall'API (delisted/invalidi)", len(missing))
+
+    # Output JSON
+    json_out = args.json_out or "games.json"
+    Path(json_out).write_text(
+        json.dumps(games, indent=None, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    log.info("Dati JSON salvati in: %s", json_out)
+
+    # Output HTML
     output = build_html(games, args.market, cat_label)
     Path(args.out).write_text(output, encoding="utf-8")
 
-    print(f"\n✅ Completato: {len(games)} giochi, {len(failed)} errori")
-    print(f"   File generato: {args.out}")
-    print(f"   Apri con: open {args.out}")
+    log.info("Completato: %d giochi, %d errori, %d missing", len(games), len(failed), len(missing))
+    log.info("File generato: %s", args.out)
 
 
 if __name__ == "__main__":

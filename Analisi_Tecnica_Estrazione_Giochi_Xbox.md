@@ -1,326 +1,265 @@
-# Xbox Scraper — Analisi Tecnica e Roadmap
+# Xbox Scraper — Analisi Tecnica
 
 ## Obiettivo
 
-Recuperare l'elenco completo (~4000 titoli) dei giochi Xbox retrocompatibili
-tramite le API Microsoft Display Catalog, senza scaricare i giochi,
-e presentarli in un'interfaccia HTML navigabile (ricerca, ordinamento, immagini, prezzi).
+Costruire un catalogo statico dei giochi Xbox esposti dalla pagina pubblica di retrocompatibilita/catalogo Xbox e dalla Microsoft Display Catalog API.
 
----
+Il flusso attuale:
 
-## Output e Distribuzione
+1. scopre i BigId dal bundle JavaScript della pagina Xbox;
+2. salva l'elenco normalizzato in `bigids.json`;
+3. interroga Display Catalog API per recuperare metadati, immagini e prezzi;
+4. salva `games.json`;
+5. genera `index.html`, pubblicabile su GitHub Pages.
 
-L'interfaccia HTML generata (`index.html`) è pubblicata automaticamente su **GitHub Pages** ad ogni push su master che modifica il file.
+Non vengono scaricati giochi, binari o asset protetti oltre alle immagini pubbliche referenziate dal catalogo.
 
-- **URL:** `https://[username].github.io/xbox-scraper/`
-- **Deployment:** GitHub Actions workflow `.github/workflows/pages.yml`
-- **Contenuto:** Tutti i giochi retrocompatibili Xbox con filtri, ricerca e ordinamento
+## Stato attuale
 
-Per rigenerare l'HTML con dati aggiornati:
-```bash
-python3 fetch_xbox_og.py --category all --out index.html
+| Area | Stato |
+| --- | --- |
+| Discovery BigId | Implementata in `fetch_bigids.py` |
+| Categorie BigId | Implementate in `bigids.json` |
+| Scraping catalogo | Implementato in `fetch_xbox_og.py` |
+| Retry/backoff | Implementato in `scraper_utils.py` |
+| Resume errori | Implementato tramite `failed_ids.json` |
+| Output JSON | Implementato con `--json-out` |
+| Output HTML | Implementato con ricerca, filtri e sort |
+| Deploy GitHub Pages | Implementato in `.github/workflows/pages.yml` |
+| Aggiornamento schedulato | Implementato in `.github/workflows/scrape.yml` |
+| Health check giornaliero | Implementato in `.github/workflows/verify.yml` |
+
+Snapshot locale:
+
+| Output | Conteggio |
+| --- | ---: |
+| BigId unici | 4277 |
+| Giochi in `games.json` | 4276 |
+| Card in `index.html` | 4276 |
+
+## Architettura
+
+```text
+[Pagina Xbox]
+      |
+      v
+[HTML pubblico]
+      |
+      v
+[Script bundle JS]
+      |
+      v
+[gameIdArrays / biUrls]
+      |
+      v
+[bigids.json]
+      |
+      v
+[Display Catalog API]
+      |
+      v
+[games.json]
+      |
+      v
+[index.html statico]
+      |
+      v
+[GitHub Pages]
 ```
 
----
+## Discovery BigId
 
-## Architettura del sistema Microsoft
+`fetch_bigids.py` prova in ordine:
 
+1. pagina passata con `--page`;
+2. bundle diretto passato con `--bundle`;
+3. file locale passato con `--input`;
+4. lista di pagine Xbox candidate (`it-IT` ed `en-US`).
+
+La discovery scarica l'HTML, estrae gli URL `<script src="...">`, ordina i bundle per priorita e cerca marker noti:
+
+- `gameIdArrays`
+- `biUrls`
+
+Il formato preferito e `gameIdArrays`:
+
+```javascript
+gameIdArrays["xboxOG"] = ["BS7SQNNRB28W", "..."];
+gameIdArrays["xbox360"] = ["C0J2F5B1B7JD", "..."];
 ```
-[Pagina Xbox retrocompatibilità]
-        |
-        v
-[Bundle JS] — contiene oggetto `biUrls` con mappa BigId → URL pubblico Xbox
-        |
-        v
-[BigId] — identificatore univoco prodotto Microsoft Store (es. "BRVM8RNWLXH1")
-        |
-        v
-[Display Catalog API] — displaycatalog.mp.microsoft.com
-  GET /v7.0/products?bigIds=ID1,ID2,...&market=IT&languages=it-it&MS-CV=...
-        |
-        v
-[JSON Response] — metadati completi: titolo, immagini, prezzi, disponibilità
-```
 
-### Struttura oggetto `biUrls` nel bundle JS
+Il fallback legacy e `biUrls`:
 
 ```javascript
 biUrls = {
   "items": {
     "urls": {
-      "BRVM8RNWLXH1": "https://www.xbox.com/games/ace-combat-7-skies-unknown",
-      "9NXXNTRZBS0Z": "https://www.xbox.com/games/destiny-2<exc>ko-kr",
-      ...
+      "BRVM8RNWLXH1": "https://www.xbox.com/games/..."
     }
   }
 }
 ```
 
-Le chiavi sono i BigId; i valori sono gli URL pubblici Xbox con eventuale
-suffisso `<exc>REGIONI` che indica mercati in cui il gioco non è disponibile.
+Output `bigids.json`:
 
-### Endpoint API Display Catalog
-
-```
-Host:     https://displaycatalog.mp.microsoft.com
-Endpoint: /v7.0/products
-Metodo:   GET
-
-Parametri obbligatori:
-  bigIds     — lista BigId separati da virgola (max ~20-50 per request)
-  market     — codice mercato (es. "IT")
-  languages  — locale (es. "it-it")
-  MS-CV      — header di tracciamento Microsoft (valore statico accettato)
-
-Risposta JSON struttura:
-  Products[].LocalizedProperties[0].ProductTitle     — titolo
-  Products[].LocalizedProperties[0].Images[]         — immagini (Purpose: SuperHeroArt, BoxArt, ecc.)
-  Products[].DisplaySkuAvailabilities[0].Availabilities[].OrderManagementData.Price.ListPrice
-  Products[].Properties.Category                     — categoria prodotto
-  Products[].Properties.IsBackwardsCompatible        — flag retrocompatibilità (da verificare)
+```json
+{
+  "source": "https://www.xbox.com/...",
+  "total": 4277,
+  "categories": {
+    "xboxOG": {
+      "label": "Xbox Original (OG)",
+      "count": 61,
+      "ids": []
+    }
+  },
+  "ids": []
+}
 ```
 
----
+## Display Catalog API
 
-## Stato attuale (proof of concept)
+Endpoint usato:
 
-| File | Contenuto | Stato |
-|------|-----------|-------|
-| `xcat-bi-urls2.json` | 109 BigId estratti manualmente dal bundle JS (formato JS, non JSON puro) | Parziale |
-| `fetch_xbox_og.py` | Script che chiama l'API e genera HTML | Funzionante ma limitato |
-| `index.html` | Output HTML generato | Obsoleto (61 giochi hardcodati) |
-
-**Problema critico:** lo script usa 61 ID hardcodati che non coincidono
-con quelli nel file JSON. I due asset non sono collegati.
-Copertura reale: ~61/4000 titoli (< 2%).
-
----
-
-## Gap identificati e Roadmap implementativa
-
-### GAP 1 — Script non legge il JSON
-**Problema:** i 61 BigId in `fetch_xbox_og.py` sono hardcodati manualmente;
-il file `xcat-bi-urls2.json` non viene mai importato.
-
-**Soluzione:** refactoring dello script per caricare i BigId dal file
-`xcat-bi-urls2.json` con parsing dell'oggetto JS `biUrls`.
-
-**File coinvolti:** `fetch_xbox_og.py`, `xcat-bi-urls2.json`
-**Output atteso:** script che legge dinamicamente i 109 ID dal file.
-**Stato:** [x] implementato in `fetch_xbox_og.py` (`load_ids()`)
-
----
-
-### GAP 2+3 — Lista BigId incompleta + nessuna automazione discovery
-**Problema:** il file `xcat-bi-urls2.json` contiene solo 109 entry su ~4000.
-Non esiste logica per trovare e scaricare il bundle JS da Xbox.
-
-**Soluzione:** nuovo script `fetch_bigids.py` che:
-1. Accede alla pagina Xbox retrocompatibilità per trovare i riferimenti ai bundle JS
-2. Scarica il bundle JS che contiene l'oggetto `biUrls`
-3. Estrae tutti i BigId tramite regex
-4. Salva il risultato in `bigids.json` (lista pulita, formato JSON valido)
-
-**File coinvolti:** `fetch_bigids.py` (nuovo), `bigids.json` (output)
-**Output atteso:** file `bigids.json` con l'elenco completo dei BigId.
-**Stato:** [x] implementato in `fetch_bigids.py` (discovery + regex + fallback locale)
-
----
-
-### GAP 4 — Rate limiting e retry assenti
-**Problema:** l'unica gestione è un `time.sleep(0.15)` fisso.
-Con ~4000 ID in batch da 20 = ~200 request; senza retry i fallimenti sono persi.
-
-**Soluzione:**
-- Retry con backoff esponenziale (max 3 tentativi per batch)
-- Delay adattivo (aumenta dopo errori HTTP 429/503)
-- Logging degli ID falliti con salvataggio in `failed_ids.json`
-- Possibilità di riprendere da dove si era rimasti
-
-**File coinvolti:** `fetch_xbox_og.py`
-**Output atteso:** scraper robusto che completa anche in caso di errori transitori.
-**Stato:** [x] implementato in `fetch_xbox_og.py` (`fetch_batch()`, backoff esponenziale, `failed_ids.json`, `--resume`)
-
----
-
-### GAP 5 — Nessun filtro per retrocompatibilità
-**Problema:** il bundle JS include giochi di categorie diverse. Il badge "OG"
-nell'HTML è decorativo, non semantico. Non c'è distinzione tra OG Xbox,
-Xbox 360 e Xbox One retrocompatibili.
-
-**Soluzione:**
-- Parsing del suffisso `<exc>` per escludere mercati non supportati per IT
-- Argomento CLI `--filter og|360|xone|all` per selezionare la categoria
-- Lettura del campo categoria dalla risposta API per taggare ogni gioco
-
-**File coinvolti:** `fetch_xbox_og.py`
-**Output atteso:** HTML con tag categoria per ogni gioco, filtrabile da CLI.
-**Stato:** [x] implementato in `fetch_xbox_og.py` (`--filter-market`, `filter_by_market()`, campo categoria in HTML)
-
----
-
-## Feature aggiuntive
-
-### FEATURE A — Selettore categoria console (terminale interattivo)
-**Obiettivo:** permettere all'utente di scegliere quale generazione di giochi
-scaricare prima di avviare lo scraping, con un menu numerato da terminale.
-
-**Generazioni supportate** (da `XboxConsoleGenOptimized` nell'API):
-
-| Codice | Console | Campo API |
-|--------|---------|-----------|
-| `all`  | Tutte le generazioni | — |
-| `og`   | Xbox Original (2001) | `ConsoleGen6` |
-| `360`  | Xbox 360 (2005) | `ConsoleGen7` |
-| `xone` | Xbox One (2013) | `ConsoleGen8` (non Gen9) |
-| `series` | Xbox Series X\|S enhanced | `ConsoleGen9` |
-
-**Comportamento:**
-- Senza argomenti: menu interattivo da terminale con selezione numerata
-- Con `--category CODICE`: non-interattivo (per automazione/scripting)
-- La categoria viene rilevata **post-fetch** dall'API e usata per filtrare i risultati
-
-**File coinvolti:** `fetch_xbox_og.py`
-**Stato:** [x] implementato (`select_category_interactive()`, `--category`, `detect_console_gen()`)
-
----
-
-### FEATURE B — Download catalogo retrocompatibile completo
-**Obiettivo:** scaricare l'intero elenco di giochi retrocompatibili Xbox (stimato
-~4000 titoli) con supporto per specificare la categoria/generazione target.
-
-**Pagine Xbox note per categoria:**
-
-| Categoria | URL |
-|-----------|-----|
-| Tutte | `https://www.xbox.com/en-US/games/backward-compatibility` |
-| OG Xbox | stessa pagina, sezione dedicata |
-| Xbox 360 | stessa pagina, sezione dedicata |
-
-**Approccio:** `fetch_bigids.py --page URL` tenta discovery automatica;
-se fallisce, usa `--input bundle.js` con il file JS scaricato manualmente
-dal DevTools (Network → JS → cerca "biUrls").
-
-**File coinvolti:** `fetch_bigids.py`
-**Stato:** [x] implementato (discovery automatica + fallback locale)
-
----
-
-### FEATURE C — HTML: filtri per genere, generazione e sort prezzo numerico
-**Obiettivo:** interfaccia HTML con filtri per:
-- **Genere gioco** (da `Categories` API, es. "Action & adventure", "Role playing")
-- **Generazione console** (da `XboxConsoleGenOptimized`, es. "Xbox One", "Xbox 360")
-- **Sort prezzo** (numerico, non lessicografico — valore estratto e messo in `data-price`)
-- **Sort alfabetico** (già presente)
-
-**Dati aggiuntivi per card HTML:**
-```
-data-genre="action--adventure"   ← Categories[0] normalizzato
-data-gen="xone"                   ← generazione rilevata
-data-price-num="19.99"            ← prezzo numerico per sort
+```text
+GET https://displaycatalog.mp.microsoft.com/v7.0/products
 ```
 
-**UI:** pill-button per ogni filtro, toggle multiplo, reset "Tutti"
+Parametri:
 
-**File coinvolti:** `fetch_xbox_og.py` (generazione HTML)
-**Stato:** [x] implementato (filtri dinamici generati dai dati reali)
+| Parametro | Valore |
+| --- | --- |
+| `bigIds` | lista BigId separati da virgola |
+| `market` | default `IT` |
+| `languages` | default `it-it` |
+| `MS-CV` | correlation vector generato localmente |
 
----
+Esempio:
 
-## Ordine di implementazione
-
-```
-[GAP 1] Lettura BigId da file                    ← fetch_xbox_og.py legge xcat-bi-urls2.json
-    ↓
-[GAP 2+3] Scraper bundle JS                      ← nuovo fetch_bigids.py → bigids.json (~4000 ID)
-    ↓
-[GAP 4] Rate limiting + retry                    ← integrato in fetch_xbox_og.py
-    ↓
-[GAP 5] Filtro retrocompatibilità + tag          ← argomento CLI + logica in fetch_xbox_og.py
-    ↓
-[FEATURE A] Terminal selector generazione        ← menu interattivo + --category CLI
-    ↓
-[FEATURE B] Download catalogo completo           ← fetch_bigids.py multi-pagina
-    ↓
-[FEATURE C] HTML: filtri genere/gen + sort fix   ← pill-button + data attributes
+```text
+https://displaycatalog.mp.microsoft.com/v7.0/products?bigIds=BS7SQNNRB28W&market=IT&languages=it-it&MS-CV=<cv>
 ```
 
----
+Campi usati dalla risposta:
 
-## Dettagli tecnici implementativi
+| Campo API | Uso |
+| --- | --- |
+| `ProductId` | ID prodotto |
+| `LocalizedProperties[0].ProductTitle` | titolo |
+| `LocalizedProperties[0].Images[]` | immagine card |
+| `DisplaySkuAvailabilities[].Availabilities[]...ListPrice` | prezzo |
+| `Properties.Categories` | genere |
 
-### Parsing del file xcat-bi-urls2.json (formato JS)
+## Scraping
 
-```python
-import re, json
+`fetch_xbox_og.py` carica gli ID da `bigids.json` o da un file passato con `--ids`.
 
-def load_bigids_from_js(path):
-    with open(path) as f:
-        content = f.read()
-    # Estrai il JSON dall'assegnazione JS: biUrls = { ... }
-    match = re.search(r'biUrls\s*=\s*(\{.*\})', content, re.DOTALL)
-    obj = json.loads(match.group(1))
-    urls = obj["items"]["urls"]
-    return list(urls.keys()), urls  # (lista id, mappa id→url)
+Comando completo consigliato:
+
+```bash
+python3 fetch_xbox_og.py \
+  --category all \
+  --batch 50 \
+  --delay 0.3 \
+  --workers 3 \
+  --out index.html \
+  --json-out games.json
 ```
 
-### Batching delle richieste API
+La modalita concorrente usa `ThreadPoolExecutor`. I primi worker sono sfalsati per evitare una raffica iniziale verso l'API. Gli errori di rete o HTTP transitori passano da `fetch_with_retry()` con backoff esponenziale.
 
-```python
-def chunks(lst, n):
-    for i in range(0, len(lst), n):
-        yield lst[i:i+n]
+Output della funzione `scrape()`:
 
-BATCH_SIZE = 20  # conservativo; Microsoft accetta fino a ~50
+| Valore | Significato |
+| --- | --- |
+| `games` | prodotti normalizzati e deduplicati |
+| `failed_ids` | ID falliti per errore di rete/API |
+| `missing_ids` | ID richiesti ma non restituiti dall'API |
+
+## HTML generato
+
+`build_html()` produce una pagina statica con:
+
+- CSS inline;
+- JavaScript inline senza dipendenze;
+- ricerca debounced;
+- filtri dinamici generati dai dati reali;
+- ordinamento numerico del prezzo con `data-price-num`;
+- link allo store Xbox tramite `https://www.xbox.com/games/store/-/<ProductId>`.
+
+Attributi principali delle card:
+
+```html
+<div class="game-card"
+     data-title="..."
+     data-cat="xbox-original-og"
+     data-genre="action-adventure"
+     data-price-num="19.99">
 ```
 
-### Retry con backoff esponenziale
+## Automazioni
 
-```python
-import time
+### CI
 
-def fetch_with_retry(url, headers, ctx, max_retries=3):
-    for attempt in range(max_retries):
-        try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=15, context=ctx) as r:
-                return json.loads(r.read().decode())
-        except Exception as e:
-            if attempt == max_retries - 1:
-                raise
-            time.sleep(2 ** attempt)  # 1s, 2s, 4s
+`.github/workflows/ci.yml`
+
+- gira su push e PR;
+- installa Python;
+- compila tutti i file `.py`.
+
+### Verify giornaliero
+
+`.github/workflows/verify.yml`
+
+- gira ogni giorno;
+- compila gli script;
+- esegue discovery BigId in un file temporaneo;
+- verifica che il numero di BigId sia sopra una soglia minima;
+- esegue uno scrape piccolo su `xboxOG`;
+- verifica che il JSON generato contenga risultati.
+
+Questo workflow non committa modifiche.
+
+### Scrape settimanale
+
+`.github/workflows/scrape.yml`
+
+- gira ogni lunedi;
+- prova discovery dei BigId;
+- usa fallback sul `bigids.json` versionato se la discovery fallisce;
+- rigenera `games.json` e `index.html`;
+- committa e pusha solo se ci sono modifiche.
+
+### Deploy Pages
+
+`.github/workflows/pages.yml`
+
+- si attiva quando cambiano `index.html` o `games.json` su `master`;
+- pubblica l'intero contenuto del repository come sito statico.
+
+## Rischi tecnici
+
+| Rischio | Mitigazione |
+| --- | --- |
+| Xbox cambia struttura HTML o nomi bundle | `verify.yml` fallisce sulla discovery giornaliera |
+| Xbox cambia marker JS (`gameIdArrays`/`biUrls`) | `fetch_bigids.py` ha fallback locale/manuale |
+| Display Catalog API cambia endpoint o schema | `verify.yml` fallisce sullo scrape campione |
+| Rate limit Microsoft | batch configurabile, delay, workers limitati, retry/backoff |
+| Prodotti delisted o non restituiti | tracciati come `missing_ids`, non considerati errore fatale |
+
+## Roadmap residua
+
+| Priorita | Attivita |
+| --- | --- |
+| Media | Aggiungere test unitari per parsing `gameIdArrays`, `biUrls` e normalizzazione prodotto |
+| Media | Separare template HTML da logica Python se la UI cresce |
+| Bassa | Aggiungere report storico delle differenze fra run |
+| Bassa | Rendere configurabili soglie health check via workflow inputs |
+
+## Comandi di verifica locale
+
+```bash
+python3 -m py_compile fetch_bigids.py fetch_xbox_og.py scraper_utils.py
+python3 fetch_bigids.py --out /tmp/bigids_verify.json
+python3 fetch_xbox_og.py --ids /tmp/bigids_verify.json --category xboxOG --out /tmp/xbox_verify.html --json-out /tmp/xbox_verify.json
 ```
-
-### Scoperta URL bundle JS
-
-```python
-# La pagina Xbox carica un HTML che referenzia i bundle JS via <script src="...">
-# Pattern atteso: file con nome tipo chunk-*.js o main-*.js contenente "biUrls"
-import re, urllib.request
-
-def find_biurls_bundle(page_url):
-    html = fetch_text(page_url)
-    scripts = re.findall(r'<script[^>]+src="([^"]+\.js[^"]*)"', html)
-    for src in scripts:
-        js = fetch_text(src)
-        if 'biUrls' in js:
-            return js
-    return None
-```
-
----
-
-## Stack tecnologico
-
-- **Python 3** — stdlib only (`urllib`, `json`, `re`, `time`, `argparse`, `ssl`)
-- **No dipendenze esterne** — compatibile con qualsiasi ambiente
-- **Output:** HTML statico self-contained (CSS + JS inline)
-
----
-
-## Note di sicurezza / rate limiting
-
-- L'API Display Catalog è pubblica ma Microsoft può imporre rate limit
-- Usare delay tra i batch (default: 0.3s, aumenta a 2s dopo un 429)
-- Il parametro MS-CV è un correlation vector statico, accettato dall'API
-- Non è necessario autenticarsi (API pubblica non autenticata)

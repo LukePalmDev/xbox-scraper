@@ -1,0 +1,77 @@
+name: Verify Xbox Scraper
+
+on:
+  schedule:
+    - cron: "15 5 * * *"  # Ogni giorno alle 05:15 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check Python syntax
+        run: python3 -m py_compile fetch_bigids.py fetch_xbox_og.py scraper_utils.py
+
+      - name: Verify BigId discovery
+        run: python3 fetch_bigids.py --out /tmp/bigids_verify.json
+
+      - name: Validate discovered BigIds
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("/tmp/bigids_verify.json")
+          data = json.loads(path.read_text(encoding="utf-8"))
+          total = int(data.get("total", 0))
+          categories = data.get("categories", {})
+
+          print(f"Discovered BigIds: {total}")
+          print("Categories:", ", ".join(f"{k}={v.get('count', len(v.get('ids', [])))}" for k, v in categories.items()))
+
+          if total < 3000:
+              raise SystemExit(f"Too few BigIds discovered: {total}")
+          if not categories:
+              raise SystemExit("No BigId categories discovered")
+          if "xboxOG" not in categories:
+              raise SystemExit("Missing expected xboxOG category")
+          PY
+
+      - name: Verify Display Catalog API
+        run: |
+          python3 fetch_xbox_og.py \
+            --ids /tmp/bigids_verify.json \
+            --category xboxOG \
+            --batch 50 \
+            --delay 0.3 \
+            --workers 2 \
+            --out /tmp/xbox_verify.html \
+            --json-out /tmp/xbox_verify.json
+
+      - name: Validate API output
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          games = json.loads(Path("/tmp/xbox_verify.json").read_text(encoding="utf-8"))
+          html = Path("/tmp/xbox_verify.html").read_text(encoding="utf-8")
+
+          print(f"Verified games: {len(games)}")
+          if len(games) < 40:
+              raise SystemExit(f"Too few games returned by Display Catalog API: {len(games)}")
+          if "game-card" not in html:
+              raise SystemExit("Generated HTML does not contain game cards")
+          PY

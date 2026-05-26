@@ -26,6 +26,7 @@ Non vengono scaricati giochi, binari o asset protetti oltre alle immagini pubbli
 | Resume errori | Implementato tramite `failed_ids.json` |
 | Filtro mercato `<exc>` | Implementato via mappa URL legacy quando disponibile |
 | Validazione CLI | Implementata per file `--ids`, batch, delay e workers |
+| Pulizia artefatti locali | Implementata in `scripts/clean_artifacts.sh` |
 | Output JSON | Implementato con `--json-out` |
 | Output HTML | Implementato con ricerca, filtri e sort |
 | Deploy GitHub Pages | Implementato in `.github/workflows/pages.yml` |

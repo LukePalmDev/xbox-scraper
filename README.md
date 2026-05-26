@@ -134,6 +134,12 @@ Test unitari offline:
 python3 -m unittest discover -s tests
 ```
 
+Pulizia artefatti locali generati da Python/macOS:
+
+```bash
+sh scripts/clean_artifacts.sh
+```
+
 Verifica discovery bundle senza modificare i dati versionati:
 
 ```bash

@@ -109,8 +109,37 @@ class ProductParsingTests(unittest.TestCase):
         self.assertEqual(parsed["img"], "https://images.example/box.jpg")
         self.assertEqual(parsed["price"], "19.99 EUR")
         self.assertEqual(parsed["price_num"], 19.99)
+        self.assertEqual(parsed["price_status"], "paid")
         self.assertEqual(parsed["source_category"], "Xbox Original (OG)")
         self.assertEqual(parsed["genre"], "Action & adventure")
+
+    def test_parse_product_distinguishes_free_from_unknown_price(self):
+        free_product = {
+            "ProductId": "FREE123456",
+            "LocalizedProperties": [{"ProductTitle": "Free Game", "Images": []}],
+            "DisplaySkuAvailabilities": [
+                {
+                    "Availabilities": [
+                        {"OrderManagementData": {"Price": {"ListPrice": 0, "CurrencyCode": "EUR"}}}
+                    ]
+                }
+            ],
+            "Properties": {},
+        }
+        unknown_product = {
+            "ProductId": "UNKNOWN123",
+            "LocalizedProperties": [{"ProductTitle": "Unknown Game", "Images": []}],
+            "DisplaySkuAvailabilities": [{"Availabilities": []}],
+            "Properties": {},
+        }
+
+        free = fetch_xbox_og.parse_product(free_product, "FREE123456", "Test")
+        unknown = fetch_xbox_og.parse_product(unknown_product, "UNKNOWN123", "Test")
+
+        self.assertEqual(free["price"], "Gratis")
+        self.assertEqual(free["price_status"], "free")
+        self.assertIsNone(unknown["price"])
+        self.assertEqual(unknown["price_status"], "unknown")
 
 
 class JsonFixtureTests(unittest.TestCase):

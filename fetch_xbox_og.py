@@ -288,14 +288,24 @@ def parse_product(p: dict, game_id: str, source_category: str) -> dict:
     # Prezzo con valore numerico per sort
     price_str = None
     price_num = 0.0
+    price_status = "unknown"
     try:
         avs = p.get("DisplaySkuAvailabilities", [{}])[0].get("Availabilities", [])
         for av in avs:
             lp = av.get("OrderManagementData", {}).get("Price", {}).get("ListPrice", 0)
-            if lp and lp > 0:
-                cc = av["OrderManagementData"]["Price"].get("CurrencyCode", "EUR")
+            price = av.get("OrderManagementData", {}).get("Price", {})
+            if "ListPrice" not in price:
+                continue
+            if lp > 0:
+                cc = price.get("CurrencyCode", "EUR")
                 price_str = f"{lp:.2f} {cc}"
                 price_num = float(lp)
+                price_status = "paid"
+                break
+            if lp == 0:
+                price_str = "Gratis"
+                price_num = 0.0
+                price_status = "free"
                 break
     except Exception:
         pass
@@ -315,6 +325,7 @@ def parse_product(p: dict, game_id: str, source_category: str) -> dict:
         "img": img_url,
         "price": price_str,
         "price_num": price_num,
+        "price_status": price_status,
         "source_category": source_category,
         "genre": genre,
         "url": store_url,
@@ -451,7 +462,8 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
     # Statistiche per dashboard
     priced_games = [g for g in games if g["price_num"] > 0]
     avg_price = sum(g["price_num"] for g in priced_games) / len(priced_games) if priced_games else 0
-    free_count = sum(1 for g in games if g["price_num"] == 0)
+    free_count = sum(1 for g in games if g.get("price_status") == "free")
+    unknown_price_count = sum(1 for g in games if g.get("price_status", "unknown") == "unknown")
     cat_counts = {}
     for g in games:
         cat = g["source_category"] or "Sconosciuto"
@@ -465,6 +477,7 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
     <div class="stats-bar">
       <div class="stat-item"><div class="stat-num">{len(games)}</div><div class="stat-lbl">Totale</div></div>
       <div class="stat-item"><div class="stat-num">{free_count}</div><div class="stat-lbl">Gratis</div></div>
+      <div class="stat-item"><div class="stat-num">{unknown_price_count}</div><div class="stat-lbl">Prezzo N/D</div></div>
       <div class="stat-item"><div class="stat-num">{avg_price:.2f}</div><div class="stat-lbl">Prezzo medio</div></div>
       {stats_items}
     </div>"""

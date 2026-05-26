@@ -21,6 +21,7 @@ Non vengono scaricati giochi, binari o asset protetti oltre alle immagini pubbli
 | Discovery BigId | Implementata in `fetch_bigids.py` |
 | Categorie BigId | Implementate in `bigids.json` |
 | Scraping catalogo | Implementato in `fetch_xbox_og.py` |
+| Generazione HTML | Isolata in `html_builder.py` |
 | Retry/backoff | Implementato in `scraper_utils.py` |
 | Resume errori | Implementato tramite `failed_ids.json` |
 | Filtro mercato `<exc>` | Implementato via mappa URL legacy quando disponibile |
@@ -182,7 +183,7 @@ Output della funzione `scrape()`:
 
 ## HTML generato
 
-`build_html()` produce una pagina statica con:
+`html_builder.build_html()` produce una pagina statica con:
 
 - CSS inline;
 - JavaScript inline senza dipendenze;

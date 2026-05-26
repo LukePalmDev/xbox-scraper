@@ -6,6 +6,7 @@ from pathlib import Path
 
 import fetch_bigids
 import fetch_xbox_og
+import html_builder
 
 
 class BigIdParsingTests(unittest.TestCase):
@@ -150,6 +151,30 @@ class JsonFixtureTests(unittest.TestCase):
         self.assertIn("ids", data)
         self.assertIn("categories", data)
         self.assertIn("xboxOG", data["categories"])
+
+
+class HtmlBuilderTests(unittest.TestCase):
+    def test_build_html_renders_cards_and_controls(self):
+        games = [
+            {
+                "id": "BS7SQNNRB28W",
+                "title": "Armed and Dangerous",
+                "img": None,
+                "price": "19.99 EUR",
+                "price_num": 19.99,
+                "price_status": "paid",
+                "source_category": "Xbox Original (OG)",
+                "genre": "Action & adventure",
+                "url": "https://www.xbox.com/games/store/-/BS7SQNNRB28W",
+            }
+        ]
+
+        html = html_builder.build_html(games, "IT", "Xbox Original (OG)")
+
+        self.assertIn("Xbox — 1 giochi", html)
+        self.assertIn('class="game-card"', html)
+        self.assertIn("Prezzo N/D", html)
+        self.assertIn("Action &amp; adventure", html)
 
 
 class CliValidationTests(unittest.TestCase):

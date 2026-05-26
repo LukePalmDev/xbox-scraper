@@ -32,6 +32,7 @@ Categorie rilevate in `bigids.json`:
 | --- | --- |
 | `fetch_bigids.py` | Scopre il bundle Xbox e genera `bigids.json` |
 | `fetch_xbox_og.py` | Interroga Display Catalog API e genera `games.json` + `index.html` |
+| `html_builder.py` | Genera l'interfaccia HTML statica |
 | `scraper_utils.py` | Utility condivise per HTTP, SSL, retry/backoff e MS-CV |
 | `bigids.json` | Elenco BigId per categoria |
 | `games.json` | Dati normalizzati dei giochi |
@@ -123,7 +124,7 @@ Le chiavi dipendono dal bundle Xbox e sono salvate in `bigids.json`.
 Controllo sintassi:
 
 ```bash
-python3 -m py_compile fetch_bigids.py fetch_xbox_og.py scraper_utils.py
+python3 -m py_compile fetch_bigids.py fetch_xbox_og.py html_builder.py scraper_utils.py
 ```
 
 Test unitari offline:

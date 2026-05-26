@@ -156,6 +156,7 @@ python3 fetch_xbox_og.py \
 - `--resume` ritenta gli ID salvati in `failed_ids.json`.
 - `--no-verify-ssl` serve solo come fallback diagnostico.
 - `--filter-market` richiede una mappa URL legacy con suffissi `<exc>`; se la copertura e parziale, lo script lo segnala nei log.
+- `--batch` accetta valori da 1 a 50; `--workers` accetta valori da 1 a 10.
 - Il batch predefinito e `50`; per ridurre pressione sull'API aumentare `--delay` o ridurre `--workers`.
 
 ## Licenza

@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 
 import fetch_bigids
@@ -120,6 +121,33 @@ class JsonFixtureTests(unittest.TestCase):
         self.assertIn("ids", data)
         self.assertIn("categories", data)
         self.assertIn("xboxOG", data["categories"])
+
+
+class CliValidationTests(unittest.TestCase):
+    def _args(self, **overrides):
+        values = {
+            "ids": None,
+            "batch": 50,
+            "delay": 0.3,
+            "workers": 3,
+        }
+        values.update(overrides)
+        return SimpleNamespace(**values)
+
+    def test_validate_args_accepts_default_scrape_values(self):
+        fetch_xbox_og.validate_args(self._args())
+
+    def test_validate_args_rejects_batch_above_display_catalog_limit(self):
+        with self.assertRaises(SystemExit):
+            fetch_xbox_og.validate_args(self._args(batch=51))
+
+    def test_validate_args_rejects_negative_delay(self):
+        with self.assertRaises(SystemExit):
+            fetch_xbox_og.validate_args(self._args(delay=-0.1))
+
+    def test_validate_args_rejects_missing_ids_file(self):
+        with self.assertRaises(SystemExit):
+            fetch_xbox_og.validate_args(self._args(ids="/tmp/xbox-scraper-missing-bigids.json"))
 
 
 if __name__ == "__main__":

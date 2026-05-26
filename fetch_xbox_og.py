@@ -154,6 +154,18 @@ def load_market_url_map(ids_file: str | None) -> dict[str, str]:
     return {}
 
 
+def validate_args(args: argparse.Namespace) -> None:
+    """Valida i parametri CLI prima di avviare scraping o I/O distruttivo."""
+    if args.ids and not Path(args.ids).exists():
+        sys.exit(f"Errore: file BigId non trovato: {args.ids}")
+    if not 1 <= args.batch <= 50:
+        sys.exit("Errore: --batch deve essere compreso tra 1 e 50")
+    if args.delay < 0:
+        sys.exit("Errore: --delay deve essere maggiore o uguale a 0")
+    if not 1 <= args.workers <= 10:
+        sys.exit("Errore: --workers deve essere compreso tra 1 e 10")
+
+
 # ---------------------------------------------------------------------------
 # FEATURE A — Menu interattivo da terminale
 # ---------------------------------------------------------------------------
@@ -697,6 +709,8 @@ def main():
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%H:%M:%S",
     )
+
+    validate_args(args)
 
     ssl_ctx = create_ssl_context(verify=not args.no_verify_ssl)
 

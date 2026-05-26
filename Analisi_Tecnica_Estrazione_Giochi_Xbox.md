@@ -27,6 +27,7 @@ Non vengono scaricati giochi, binari o asset protetti oltre alle immagini pubbli
 | Filtro mercato `<exc>` | Implementato via mappa URL legacy quando disponibile |
 | Validazione CLI | Implementata per file `--ids`, batch, delay e workers |
 | Pulizia artefatti locali | Implementata in `scripts/clean_artifacts.sh` |
+| Report differenze scrape | Implementato come artifact `scrape-report.json` nel workflow settimanale |
 | Output JSON | Implementato con `--json-out` |
 | Output HTML | Implementato con ricerca, filtri e sort |
 | Deploy GitHub Pages | Implementato in `.github/workflows/pages.yml` |
@@ -237,6 +238,7 @@ Quando lanciato manualmente, permette di configurare le soglie minime `min_bigid
 - prova discovery dei BigId;
 - usa fallback sul `bigids.json` versionato se la discovery fallisce;
 - rigenera `games.json` e `index.html`;
+- genera e carica come artifact `scrape-report.json` con conteggi e liste di giochi aggiunti/rimossi;
 - committa e pusha solo se ci sono modifiche.
 
 ### Deploy Pages
@@ -262,7 +264,6 @@ Quando lanciato manualmente, permette di configurare le soglie minime `min_bigid
 | --- | --- |
 | Media | Aggiungere test unitari per parsing `gameIdArrays`, `biUrls` e normalizzazione prodotto |
 | Media | Separare template HTML da logica Python se la UI cresce |
-| Bassa | Aggiungere report storico delle differenze fra run |
 
 ## Comandi di verifica locale
 

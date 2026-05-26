@@ -117,7 +117,7 @@ Le chiavi dipendono dal bundle Xbox e sono salvate in `bigids.json`.
 | --- | --- | --- |
 | `.github/workflows/ci.yml` | push/PR | Compilazione sintattica Python |
 | `.github/workflows/verify.yml` | giornaliera + manuale | Health check su codice, discovery bundle e API Display Catalog; soglie configurabili nel run manuale |
-| `.github/workflows/scrape.yml` | settimanale + manuale | Aggiorna `bigids.json`, `games.json` e `index.html`, poi committa se cambiano |
+| `.github/workflows/scrape.yml` | settimanale + manuale | Aggiorna `bigids.json`, `games.json` e `index.html`, poi committa se cambiano; carica un artifact `scrape-report.json` con aggiunte/rimozioni |
 | `.github/workflows/pages.yml` | push su `master` | Pubblica GitHub Pages quando cambiano `index.html` o `games.json` |
 
 ## Verifiche locali

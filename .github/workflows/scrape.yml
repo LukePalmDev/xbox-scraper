@@ -65,18 +65,23 @@ jobs:
         run: |
           python3 -c "
           import json, os
+          from datetime import datetime, timezone
+
           new = json.load(open('games.json'))
           new_ids = {g['id'] for g in new}
+          new_by_id = {g['id']: g for g in new}
 
           # Confronta con versione precedente (se esiste nel repo)
           old_path = 'games_old.json'
           os.system('git show HEAD:games.json > games_old.json 2>/dev/null || true')
 
           added, removed = set(), set()
+          old_by_id = {}
           if os.path.exists(old_path) and os.path.getsize(old_path) > 0:
               try:
                   old = json.load(open(old_path))
                   old_ids = {g['id'] for g in old}
+                  old_by_id = {g['id']: g for g in old}
                   added = new_ids - old_ids
                   removed = old_ids - new_ids
               except (json.JSONDecodeError, KeyError):
@@ -87,6 +92,23 @@ jobs:
               f.write(f'ADDED={len(added)}\n')
               f.write(f'REMOVED={len(removed)}\n')
 
+          report = {
+              'generated_at': datetime.now(timezone.utc).isoformat(),
+              'total_games': len(new),
+              'added_count': len(added),
+              'removed_count': len(removed),
+              'added': [
+                  {'id': gid, 'title': new_by_id[gid].get('title', gid)}
+                  for gid in sorted(added)
+              ],
+              'removed': [
+                  {'id': gid, 'title': old_by_id.get(gid, {}).get('title', gid)}
+                  for gid in sorted(removed)
+              ],
+          }
+          with open('scrape-report.json', 'w', encoding='utf-8') as f:
+              json.dump(report, f, ensure_ascii=False, indent=2)
+
           if added:
               print(f'Nuovi giochi ({len(added)}):')
               # Trova i titoli dei giochi aggiunti
@@ -96,6 +118,12 @@ jobs:
           if removed:
               print(f'Giochi rimossi ({len(removed)}): {removed}')
           "
+
+      - name: Upload scrape report
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrape-report
+          path: scrape-report.json
 
       - name: Scrape summary
         run: |

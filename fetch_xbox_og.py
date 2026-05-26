@@ -124,12 +124,34 @@ def _cat_label(key: str, categories: dict) -> str:
 def _parse_js_biurls(path: Path) -> tuple[list[str], dict[str, str]]:
     """Parsing legacy del file JS con biUrls = { ... }."""
     content = path.read_text(encoding="utf-8")
-    match = re.search(r'biUrls\s*=\s*(\{.*\})', content, re.DOTALL)
+    match = re.search(r'biUrls\s*=\s*', content)
     if not match:
         return [], {}
-    obj = json.loads(match.group(1))
+    try:
+        obj, _ = json.JSONDecoder().raw_decode(content[match.end():].lstrip())
+    except json.JSONDecodeError:
+        return [], {}
     urls: dict[str, str] = obj["items"]["urls"]
     return list(urls.keys()), urls
+
+
+def load_market_url_map(ids_file: str | None) -> dict[str, str]:
+    """Carica la mappa BigId->URL usata per il filtro <exc>MARKET."""
+    candidates: list[Path] = []
+    if ids_file:
+        candidates.append(Path(ids_file))
+    candidates.append(Path("xcat-bi-urls2.json"))
+
+    seen: set[Path] = set()
+    for path in candidates:
+        if path in seen or not path.exists():
+            continue
+        seen.add(path)
+        _, url_map = _parse_js_biurls(path)
+        if url_map:
+            log.info("Mappa URL mercato caricata da %s (%d ID)", path, len(url_map))
+            return url_map
+    return {}
 
 
 # ---------------------------------------------------------------------------
@@ -695,6 +717,15 @@ def main():
         log.info("Resume: %d ID da ritentare", len(ids))
     else:
         ids, id_to_cat = load_ids(args.ids, category_key)
+
+    if args.filter_market:
+        url_map = load_market_url_map(args.ids)
+        if url_map:
+            if len(url_map) < len(ids):
+                log.warning("Filtro mercato parziale: mappa URL copre %d/%d ID", len(url_map), len(ids))
+            ids = filter_by_market(ids, url_map, args.market)
+        else:
+            log.warning("Filtro mercato richiesto ma nessuna mappa URL <exc> disponibile")
 
     # Ottieni la label della categoria per il titolo HTML
     cat_label = category_key

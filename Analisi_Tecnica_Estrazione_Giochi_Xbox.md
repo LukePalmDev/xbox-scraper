@@ -23,6 +23,7 @@ Non vengono scaricati giochi, binari o asset protetti oltre alle immagini pubbli
 | Scraping catalogo | Implementato in `fetch_xbox_og.py` |
 | Retry/backoff | Implementato in `scraper_utils.py` |
 | Resume errori | Implementato tramite `failed_ids.json` |
+| Filtro mercato `<exc>` | Implementato via mappa URL legacy quando disponibile |
 | Output JSON | Implementato con `--json-out` |
 | Output HTML | Implementato con ricerca, filtri e sort |
 | Deploy GitHub Pages | Implementato in `.github/workflows/pages.yml` |
@@ -167,6 +168,8 @@ python3 fetch_xbox_og.py \
 ```
 
 La modalita concorrente usa `ThreadPoolExecutor`. I primi worker sono sfalsati per evitare una raffica iniziale verso l'API. Gli errori di rete o HTTP transitori passano da `fetch_with_retry()` con backoff esponenziale.
+
+Il flag `--filter-market` usa la mappa BigId -> URL del file legacy `xcat-bi-urls2.json` per interpretare i suffissi `<exc>MARKET`. Se la mappa URL non copre tutti gli ID dello scrape, il filtro viene applicato solo agli ID coperti e lo script emette un warning.
 
 Output della funzione `scrape()`:
 

@@ -75,6 +75,14 @@ python3 fetch_xbox_og.py --category fullXboxOne --out index.html --json-out game
 
 Se `--category` viene omesso in un terminale interattivo, lo script mostra un menu di selezione. In ambienti non interattivi usa `all`.
 
+Filtro mercato da suffissi `<exc>` della mappa URL legacy:
+
+```bash
+python3 fetch_xbox_og.py --category all --filter-market --market IT
+```
+
+Il filtro viene applicato solo agli ID coperti da una mappa URL con suffissi `<exc>`, tipicamente `xcat-bi-urls2.json`.
+
 ## Categorie supportate
 
 Le chiavi dipendono dal bundle Xbox e sono salvate in `bigids.json`.
@@ -141,6 +149,7 @@ python3 fetch_xbox_og.py \
 - `failed_ids.json` viene creato solo se alcuni batch falliscono ed e ignorato da Git.
 - `--resume` ritenta gli ID salvati in `failed_ids.json`.
 - `--no-verify-ssl` serve solo come fallback diagnostico.
+- `--filter-market` richiede una mappa URL legacy con suffissi `<exc>`; se la copertura e parziale, lo script lo segnala nei log.
 - Il batch predefinito e `50`; per ridurre pressione sull'API aumentare `--delay` o ridurre `--workers`.
 
 ## Licenza

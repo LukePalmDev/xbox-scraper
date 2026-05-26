@@ -53,7 +53,7 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
       {stats_items}
     </div>"""
 
-    cards = ""
+    card_items: list[str] = []
     for g in sorted(games, key=lambda x: x["title"].lower()):
         t = html_escape.escape(g["title"])
         store_url = html_escape.escape(g.get("url", ""))
@@ -74,7 +74,7 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
 
         title_html = f'<a href="{store_url}" target="_blank" rel="noopener" class="card-link">{t}</a>' if store_url else t
 
-        cards += f"""
+        card_items.append(f"""
         <div class="game-card" role="listitem"
              data-title="{t.lower()}"
              data-cat="{cat_slug}"
@@ -93,9 +93,10 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
             </div>
             <div class="card-id">{g["id"]}</div>
           </div>
-        </div>"""
+        </div>""")
 
     total = len(games)
+    cards = "".join(card_items)
 
     return f"""<!DOCTYPE html>
 <html lang="it">

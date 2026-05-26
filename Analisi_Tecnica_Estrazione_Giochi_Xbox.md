@@ -227,6 +227,7 @@ Attributi principali delle card:
 - verifica che il JSON generato contenga risultati.
 
 Questo workflow non committa modifiche.
+Quando lanciato manualmente, permette di configurare le soglie minime `min_bigids` e `min_xboxog_games`; la schedule usa i default.
 
 ### Scrape settimanale
 
@@ -262,7 +263,6 @@ Questo workflow non committa modifiche.
 | Media | Aggiungere test unitari per parsing `gameIdArrays`, `biUrls` e normalizzazione prodotto |
 | Media | Separare template HTML da logica Python se la UI cresce |
 | Bassa | Aggiungere report storico delle differenze fra run |
-| Bassa | Rendere configurabili soglie health check via workflow inputs |
 
 ## Comandi di verifica locale
 

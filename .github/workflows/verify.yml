@@ -4,6 +4,15 @@ on:
   schedule:
     - cron: "15 5 * * *"  # Ogni giorno alle 05:15 UTC
   workflow_dispatch:
+    inputs:
+      min_bigids:
+        description: "Soglia minima BigId scoperti"
+        default: "3000"
+        required: false
+      min_xboxog_games:
+        description: "Soglia minima giochi Xbox OG nello smoke test"
+        default: "40"
+        required: false
 
 permissions:
   contents: read
@@ -12,6 +21,9 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      MIN_BIGIDS: ${{ github.event.inputs.min_bigids || '3000' }}
+      MIN_XBOXOG_GAMES: ${{ github.event.inputs.min_xboxog_games || '40' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,7 +34,10 @@ jobs:
           python-version: "3.11"
 
       - name: Check Python syntax
-        run: python3 -m py_compile fetch_bigids.py fetch_xbox_og.py scraper_utils.py
+        run: python3 -m py_compile fetch_bigids.py fetch_xbox_og.py html_builder.py scraper_utils.py tests/test_scraper.py
+
+      - name: Run offline unit tests
+        run: python3 -m unittest discover -s tests
 
       - name: Verify BigId discovery
         run: python3 fetch_bigids.py --out /tmp/bigids_verify.json
@@ -41,8 +56,9 @@ jobs:
           print(f"Discovered BigIds: {total}")
           print("Categories:", ", ".join(f"{k}={v.get('count', len(v.get('ids', [])))}" for k, v in categories.items()))
 
-          if total < 3000:
-              raise SystemExit(f"Too few BigIds discovered: {total}")
+          min_bigids = int("${{ env.MIN_BIGIDS }}")
+          if total < min_bigids:
+              raise SystemExit(f"Too few BigIds discovered: {total} < {min_bigids}")
           if not categories:
               raise SystemExit("No BigId categories discovered")
           if "xboxOG" not in categories:
@@ -70,8 +86,9 @@ jobs:
           html = Path("/tmp/xbox_verify.html").read_text(encoding="utf-8")
 
           print(f"Verified games: {len(games)}")
-          if len(games) < 40:
-              raise SystemExit(f"Too few games returned by Display Catalog API: {len(games)}")
+          min_games = int("${{ env.MIN_XBOXOG_GAMES }}")
+          if len(games) < min_games:
+              raise SystemExit(f"Too few games returned by Display Catalog API: {len(games)} < {min_games}")
           if "game-card" not in html:
               raise SystemExit("Generated HTML does not contain game cards")
           PY

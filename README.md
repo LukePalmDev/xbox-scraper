@@ -125,6 +125,12 @@ Controllo sintassi:
 python3 -m py_compile fetch_bigids.py fetch_xbox_og.py scraper_utils.py
 ```
 
+Test unitari offline:
+
+```bash
+python3 -m unittest discover -s tests
+```
+
 Verifica discovery bundle senza modificare i dati versionati:
 
 ```bash

@@ -105,6 +105,7 @@ Le chiavi dipendono dal bundle Xbox e sono salvate in `bigids.json`.
 
 - ricerca per titolo;
 - filtro per console/categoria sorgente;
+- supporto a giochi presenti in piu categorie sorgente;
 - filtro per genere;
 - ordinamento per nome, prezzo e console;
 - statistiche distinte per giochi gratuiti e prezzo non disponibile;

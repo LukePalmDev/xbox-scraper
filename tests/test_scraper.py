@@ -112,6 +112,7 @@ class ProductParsingTests(unittest.TestCase):
         self.assertEqual(parsed["price_num"], 19.99)
         self.assertEqual(parsed["price_status"], "paid")
         self.assertEqual(parsed["source_category"], "Xbox Original (OG)")
+        self.assertEqual(parsed["source_categories"], ["Xbox Original (OG)"])
         self.assertEqual(parsed["genre"], "Action & adventure")
 
     def test_parse_product_distinguishes_free_from_unknown_price(self):
@@ -164,6 +165,7 @@ class HtmlBuilderTests(unittest.TestCase):
                 "price_num": 19.99,
                 "price_status": "paid",
                 "source_category": "Xbox Original (OG)",
+                "source_categories": ["Xbox Original (OG)", "FPS Boost Series X"],
                 "genre": "Action & adventure",
                 "url": "https://www.xbox.com/games/store/-/BS7SQNNRB28W",
             }
@@ -173,6 +175,8 @@ class HtmlBuilderTests(unittest.TestCase):
 
         self.assertIn("Xbox — 1 giochi", html)
         self.assertIn('class="game-card"', html)
+        self.assertIn('data-cats="xbox-original-og fps-boost-series-x"', html)
+        self.assertIn("FPS Boost Series X", html)
         self.assertIn("Prezzo N/D", html)
         self.assertIn("Action &amp; adventure", html)
 

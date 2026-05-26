@@ -191,6 +191,7 @@ Output della funzione `scrape()`:
 - filtri dinamici generati dai dati reali;
 - ordinamento numerico del prezzo con `data-price-num`;
 - stato prezzo esplicito (`paid`, `free`, `unknown`) per distinguere gratis da prezzo non disponibile;
+- categorie sorgente multiple tramite `source_categories`, mantenendo `source_category` come valore primario compatibile;
 - link allo store Xbox tramite `https://www.xbox.com/games/store/-/<ProductId>`.
 
 Attributi principali delle card:

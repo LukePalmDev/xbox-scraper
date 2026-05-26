@@ -10,7 +10,12 @@ def slugify(s: str) -> str:
 
 def build_html(games: list[dict], market: str, category_label: str) -> str:
     # Raccogli valori unici per filtri
-    all_source_cats = sorted({g["source_category"] for g in games if g["source_category"]})
+    all_source_cats = sorted({
+        cat
+        for g in games
+        for cat in (g.get("source_categories") or ([g["source_category"]] if g.get("source_category") else []))
+        if cat
+    })
     all_genres = sorted({g["genre"] for g in games if g["genre"]})
 
     def make_pills(items: list[str], filter_type: str, all_label: str) -> str:
@@ -31,8 +36,9 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
     unknown_price_count = sum(1 for g in games if g.get("price_status", "unknown") == "unknown")
     cat_counts = {}
     for g in games:
-        cat = g["source_category"] or "Sconosciuto"
-        cat_counts[cat] = cat_counts.get(cat, 0) + 1
+        cats = g.get("source_categories") or ([g["source_category"]] if g.get("source_category") else [])
+        for cat in cats or ["Sconosciuto"]:
+            cat_counts[cat] = cat_counts.get(cat, 0) + 1
 
     stats_items = "".join(
         f'<div class="stat-item"><div class="stat-num">{count}</div><div class="stat-lbl">{html_escape.escape(cat)}</div></div>'
@@ -56,9 +62,14 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
             if g["img"] else '<div class="no-img">&#x1f3ae;</div>'
         )
         price_display = g["price"] or "—"
+        source_categories = g.get("source_categories") or ([g["source_category"]] if g.get("source_category") else [])
         cat_slug = slugify(g["source_category"]) if g["source_category"] else "unknown"
+        cat_slugs = " ".join(slugify(cat) for cat in source_categories) or "unknown"
         genre_slug = slugify(g["genre"]) if g["genre"] else "unknown"
-        cat_label_esc = html_escape.escape(g["source_category"] or "—")
+        cat_tags = "".join(
+            f'<span class="tag tag-cat">{html_escape.escape(cat)}</span>'
+            for cat in source_categories
+        ) or '<span class="tag tag-cat">—</span>'
         genre_label_esc = html_escape.escape(g["genre"]) if g["genre"] else "—"
 
         title_html = f'<a href="{store_url}" target="_blank" rel="noopener" class="card-link">{t}</a>' if store_url else t
@@ -67,13 +78,14 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
         <div class="game-card" role="listitem"
              data-title="{t.lower()}"
              data-cat="{cat_slug}"
+             data-cats="{cat_slugs}"
              data-genre="{genre_slug}"
              data-price-num="{g['price_num']:.2f}">
           <div class="img-wrap">{img_tag}</div>
           <div class="card-body">
             <div class="card-title">{title_html}</div>
             <div class="card-tags">
-              <span class="tag tag-cat">{cat_label_esc}</span>
+              {cat_tags}
               <span class="tag tag-genre">{genre_label_esc}</span>
             </div>
             <div class="card-meta">
@@ -224,7 +236,7 @@ function applyFilters() {{
 
   cards.forEach(function(c) {{
     var ok = (!q || c.dataset.title.indexOf(q) !== -1)
-          && (activeCat === 'all' || c.dataset.cat === activeCat)
+          && (activeCat === 'all' || (c.dataset.cats || c.dataset.cat || '').split(' ').indexOf(activeCat) !== -1)
           && (activeGenre === 'all' || c.dataset.genre === activeGenre);
     c.style.display = ok ? '' : 'none';
   }});

@@ -62,10 +62,10 @@ def load_bigids_file(path: Path) -> dict:
 def load_ids(
     ids_file: str | None,
     category_key: str,
-) -> tuple[list[str], dict[str, str]]:
+) -> tuple[list[str], dict[str, list[str]]]:
     """
     Carica i BigId per la categoria selezionata.
-    Ritorna (lista_id, mappa_id→label_categoria).
+    Ritorna (lista_id, mappa_id→lista_label_categorie).
     """
     if ids_file:
         p = Path(ids_file)
@@ -83,7 +83,7 @@ def load_ids(
     content_start = p.read_text(encoding="utf-8").strip()
     if not content_start.startswith("{") and not content_start.startswith("["):
         ids, _ = _parse_js_biurls(p)
-        return ids, {gid: "unknown" for gid in ids}
+        return ids, {gid: ["unknown"] for gid in ids}
 
     data = load_bigids_file(p)
     categories: dict[str, dict] = data.get("categories", {})
@@ -92,13 +92,14 @@ def load_ids(
         # Usa la lista piatta globale
         ids = data.get("ids", [])
         # Costruisci mappa id→categoria dalla struttura categories
-        id_to_cat: dict[str, str] = {}
+        id_to_cat: dict[str, list[str]] = {}
         for key, cat in categories.items():
             cat_ids = cat["ids"] if isinstance(cat, dict) else cat
             label = _cat_label(key, categories)
             for gid in cat_ids:
-                if gid not in id_to_cat:
-                    id_to_cat[gid] = label
+                id_to_cat.setdefault(gid, [])
+                if label not in id_to_cat[gid]:
+                    id_to_cat[gid].append(label)
         return list(dict.fromkeys(ids)), id_to_cat
 
     if category_key not in categories:
@@ -109,7 +110,7 @@ def load_ids(
     ids = cat_data["ids"] if isinstance(cat_data, dict) else cat_data
     ids = list(dict.fromkeys(ids))
     label = _cat_label(category_key, categories)
-    id_to_cat = {gid: label for gid in ids}
+    id_to_cat = {gid: [label] for gid in ids}
 
     log.info("  -> %d BigId unici [%s]", len(ids), label)
     return ids, id_to_cat
@@ -271,7 +272,7 @@ def fetch_batch(
     return data.get("Products", [])
 
 
-def parse_product(p: dict, game_id: str, source_category: str) -> dict:
+def parse_product(p: dict, game_id: str, source_category: str, source_categories: list[str] | None = None) -> dict:
     """Estrae i campi utili da un Product della Display Catalog API."""
     loc = p.get("LocalizedProperties", [{}])[0]
     title = loc.get("ProductTitle") or game_id
@@ -328,6 +329,7 @@ def parse_product(p: dict, game_id: str, source_category: str) -> dict:
         "price_num": price_num,
         "price_status": price_status,
         "source_category": source_category,
+        "source_categories": source_categories or ([source_category] if source_category else []),
         "genre": genre,
         "url": store_url,
     }
@@ -336,7 +338,7 @@ def parse_product(p: dict, game_id: str, source_category: str) -> dict:
 def _process_batch_result(
     batch: list[str],
     products: list[dict],
-    id_to_cat: dict[str, str],
+    id_to_cat: dict[str, list[str]],
     seen_ids: set[str],
 ) -> tuple[list[dict], list[str]]:
     """Processa i risultati di un batch: parse, deduplica, traccia missing."""
@@ -346,8 +348,9 @@ def _process_batch_result(
     for p in products:
         pid = p.get("ProductId", "")
         returned_ids.add(pid)
-        source_cat = id_to_cat.get(pid, id_to_cat.get(batch[0], ""))
-        parsed = parse_product(p, pid, source_cat)
+        source_categories = id_to_cat.get(pid, id_to_cat.get(batch[0], []))
+        source_cat = source_categories[0] if source_categories else ""
+        parsed = parse_product(p, pid, source_cat, source_categories)
         if parsed["id"] not in seen_ids:
             new_games.append(parsed)
             seen_ids.add(parsed["id"])
@@ -359,7 +362,7 @@ def _process_batch_result(
 
 def scrape(
     ids: list[str],
-    id_to_cat: dict[str, str],
+    id_to_cat: dict[str, list[str]],
     market: str,
     lang: str,
     batch_size: int,
@@ -496,7 +499,7 @@ def main():
     if args.resume and Path("failed_ids.json").exists():
         failed_data = json.loads(Path("failed_ids.json").read_text())
         ids = failed_data if isinstance(failed_data, list) else failed_data.get("ids", [])
-        id_to_cat: dict[str, str] = {}
+        id_to_cat: dict[str, list[str]] = {}
         log.info("Resume: %d ID da ritentare", len(ids))
     else:
         ids, id_to_cat = load_ids(args.ids, category_key)

@@ -40,9 +40,9 @@ Snapshot locale:
 
 | Output | Conteggio |
 | --- | ---: |
-| BigId unici | 4277 |
-| Giochi in `games.json` | 4276 |
-| Card in `index.html` | 4276 |
+| BigId unici | 4446 |
+| Giochi in `games.json` | 4445 |
+| Card in `index.html` | 4445 |
 
 ## Architettura
 

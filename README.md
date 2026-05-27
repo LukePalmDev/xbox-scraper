@@ -10,8 +10,8 @@ Ultimo snapshot locale verificato:
 
 | File | Stato |
 | --- | --- |
-| `bigids.json` | 4277 BigId unici |
-| `games.json` | 4276 giochi estratti |
+| `bigids.json` | 4446 BigId unici |
+| `games.json` | 4445 giochi estratti |
 | `index.html` | catalogo statico generato per mercato IT |
 
 Categorie rilevate in `bigids.json`:
@@ -25,6 +25,7 @@ Categorie rilevate in `bigids.json`:
 | FPS Boost Series S | 120 |
 | Auto HDR | 5 |
 | Starting at... | 333 |
+| Microsoft Store - Most popular | 299 |
 
 ## File principali
 

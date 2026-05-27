@@ -1,9 +1,10 @@
 """
-Xbox BigId Discovery — scarica il bundle JS da Xbox e estrae tutti i BigId.
+Xbox BigId Discovery — estrae ProductId/BigId dalle fonti pubbliche Xbox.
 
 Uso:
-  python3 fetch_bigids.py                          # scraping automatico da Xbox
-  python3 fetch_bigids.py --page URL               # URL pagina custom da cui cercare i bundle
+  python3 fetch_bigids.py                          # discovery combinata Browse + legacy + Store
+  python3 fetch_bigids.py --source browse          # solo pagina Xbox Browse paginata
+  python3 fetch_bigids.py --page URL               # URL pagina Browse custom
   python3 fetch_bigids.py --bundle URL             # URL bundle JS diretto (skip discovery)
   python3 fetch_bigids.py --input FILE             # estrai BigId da file JS locale
   python3 fetch_bigids.py --out bigids.json        # file output (default: bigids.json)
@@ -11,8 +12,9 @@ Uso:
 Output: bigids.json con struttura:
   {
     "source": "...",
-    "total": 1828,
+    "total": 16482,
     "categories": {
+      "xboxBrowse":    { "label": "Xbox Browse - All games", "ids": [...] },
       "xboxOG":        { "label": "Xbox Original (OG)", "ids": [...] },
       "xbox360":       { "label": "Xbox 360",           "ids": [...] },
       "fullXboxOne":   { "label": "Xbox One",           "ids": [...] },
@@ -165,6 +167,7 @@ def discover_biurls_bundle(
 # Label leggibili per ogni chiave gameIdArrays
 CATEGORY_LABELS = {
     "xboxBrowse":     "Xbox Browse - All games",
+    "xboxBrowseRecovery": "Xbox Browse - Sort recovery",
     "xboxOG":          "Xbox Original (OG)",
     "xbox360":         "Xbox 360",
     "fullXboxOne":     "Xbox One",
@@ -315,6 +318,29 @@ def browse_has_more(encoded_ct: str | None) -> bool:
     return bool(payload.get("HasMore"))
 
 
+def encode_browse_filters(filters: dict | None) -> str:
+    """Codifica i filtri Browse nello stesso formato usato dal frontend Xbox."""
+    return base64.b64encode(
+        json.dumps(filters or {}, separators=(",", ":")).encode("utf-8")
+    ).decode("ascii")
+
+
+def build_browse_channel_key(
+    filters: dict | None,
+    channel_id: str = "",
+) -> str:
+    """Replica la chiave canale frontend: BROWSE_CHANNELID=<id>_FILTERS=<filtri>."""
+    parts: list[str] = []
+    for filter_def in (filters or {}).values():
+        choices = filter_def.get("choices") or []
+        if not choices:
+            continue
+        choice_ids = ",".join(sorted(str(choice["id"]).upper() for choice in choices))
+        parts.append(f"{str(filter_def['id']).upper()}={choice_ids}")
+    encoded_filters = "&".join(sorted(parts))
+    return f"BROWSE_CHANNELID={channel_id}_FILTERS={encoded_filters}".upper()
+
+
 def post_json_with_retry(
     url: str,
     payload: dict,
@@ -351,9 +377,11 @@ def post_json_with_retry(
 
 
 def fetch_browse_channel_page(
-    encoded_ct: str,
+    encoded_ct: str | None,
     locale: str = "it-IT",
     channel_key: str = XBOX_BROWSE_CHANNEL_KEY,
+    encoded_filters: str = EMPTY_BROWSE_FILTERS,
+    return_filters: bool = False,
     ssl_ctx=None,
 ) -> dict:
     """Scarica una pagina successiva del catalogo Xbox Browse via continuation token."""
@@ -369,12 +397,13 @@ def fetch_browse_channel_page(
         "X-MS-API-Version": "1.1",
     }
     payload = {
-        "Filters": EMPTY_BROWSE_FILTERS,
-        "ReturnFilters": False,
+        "Filters": encoded_filters,
+        "ReturnFilters": return_filters,
         "ChannelKeyToBeUsedInResponse": channel_key,
-        "EncodedCT": encoded_ct,
         "ChannelId": "",
     }
+    if encoded_ct:
+        payload["EncodedCT"] = encoded_ct
     return post_json_with_retry(endpoint, payload, headers=headers, ssl_ctx=ssl_ctx, timeout=45)
 
 
@@ -384,7 +413,7 @@ def discover_browse_categories(
     ssl_ctx=None,
     max_pages: int = 0,
     delay: float = 0.05,
-) -> tuple[dict[str, list[str]], str]:
+) -> tuple[dict[str, list[str]], str, int | None]:
     """
     Scopre gli ID dalla pagina Xbox Browse ufficiale.
 
@@ -398,7 +427,7 @@ def discover_browse_categories(
     ids, encoded_ct, total_items = extract_browse_channel_data(state)
     if not ids:
         log.warning("Nessun prodotto nello stato iniziale Xbox Browse")
-        return {}, ""
+        return {}, "", None
 
     seen: set[str] = set(ids)
     ordered_ids = list(ids)
@@ -438,7 +467,89 @@ def discover_browse_categories(
             time.sleep(delay)
 
     log.info("  xboxBrowse completato -> %d ID unici in %d pagine", len(ordered_ids), pages)
-    return {"xboxBrowse": ordered_ids}, page_url
+    return {"xboxBrowse": ordered_ids}, page_url, total_items
+
+
+BROWSE_RECOVERY_SORTS = [
+    "Title Asc",
+    "Title Desc",
+    "ReleaseDate desc",
+    "MostPopular desc",
+]
+
+
+def discover_browse_recovery_category(
+    existing_ids: set[str],
+    target_total: int,
+    locale: str = "it-IT",
+    ssl_ctx=None,
+    delay: float = 0.0,
+) -> dict[str, list[str]]:
+    """
+    Recupera ID mancanti usando ordinamenti ufficiali del Browse endpoint.
+
+    Il canale base puo dichiarare totalItems=16482 ma chiudere prima con
+    HasMore=false. Gli ordinamenti espongono alcuni ID non presenti nella
+    paginazione base; qui aggiungiamo solo quanto basta a raggiungere il target.
+    """
+    recovered: list[str] = []
+    for sort_id in BROWSE_RECOVERY_SORTS:
+        if len(existing_ids) + len(recovered) >= target_total:
+            break
+        filters = {"orderby": {"id": "orderby", "choices": [{"id": sort_id}]}}
+        channel_key = build_browse_channel_key(filters)
+        encoded_filters = encode_browse_filters(filters)
+        encoded_ct = None
+        pages = 0
+        log.info("Recovery Browse con ordinamento: %s", sort_id)
+
+        while True:
+            data = fetch_browse_channel_page(
+                encoded_ct,
+                locale=locale,
+                channel_key=channel_key,
+                encoded_filters=encoded_filters,
+                return_filters=encoded_ct is None,
+                ssl_ctx=ssl_ctx,
+            )
+            channel = data.get("channels", {}).get(channel_key, {})
+            page_ids = [
+                str(product.get("productId", "")).upper()
+                for product in channel.get("products", [])
+                if product.get("productId")
+            ]
+            if not page_ids:
+                break
+
+            for gid in page_ids:
+                if gid in existing_ids or gid in recovered:
+                    continue
+                recovered.append(gid)
+                if len(existing_ids) + len(recovered) >= target_total:
+                    break
+
+            pages += 1
+            if len(existing_ids) + len(recovered) >= target_total:
+                break
+
+            encoded_ct = channel.get("encodedCT")
+            if not browse_has_more(encoded_ct):
+                break
+            if pages % 100 == 0:
+                log.info(
+                    "  recovery %s pagine=%d -> +%d ID (totale stimato %d/%d)",
+                    sort_id,
+                    pages,
+                    len(recovered),
+                    len(existing_ids) + len(recovered),
+                    target_total,
+                )
+            if delay > 0:
+                time.sleep(delay)
+
+        log.info("  recovery %s completato in %d pagine -> +%d ID", sort_id, pages, len(recovered))
+
+    return {"xboxBrowseRecovery": recovered} if recovered else {}
 
 
 def discover_xbox_categories(pages: list[str], ssl_ctx=None) -> tuple[dict[str, list[str]], str]:
@@ -504,6 +615,18 @@ def merge_categories(target: dict[str, list[str]], incoming: dict[str, list[str]
                 bucket.append(gid)
 
 
+def collect_unique_ids(categories: dict[str, list[str]]) -> list[str]:
+    """Restituisce gli ID unici tra categorie preservando ordine di discovery."""
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for ids in categories.values():
+        for gid in ids:
+            if gid not in seen:
+                seen.add(gid)
+                ordered.append(gid)
+    return ordered
+
+
 # ---------------------------------------------------------------------------
 # Entrypoint
 # ---------------------------------------------------------------------------
@@ -561,9 +684,10 @@ def main():
     else:
         # Modalità auto: discovery dalle fonti selezionate
         sources: list[str] = []
+        browse_target_total: int | None = None
         if args.source in ("browse", "combined"):
             browse_page = args.page or XBOX_BROWSE_PAGE
-            browse_categories, browse_source = discover_browse_categories(
+            browse_categories, browse_source, browse_target_total = discover_browse_categories(
                 page_url=browse_page,
                 ssl_ctx=ssl_ctx,
                 max_pages=args.browse_pages,
@@ -586,6 +710,23 @@ def main():
             merge_categories(categories, store_categories)
             if store_source:
                 sources.append(store_source)
+        if args.source == "combined" and browse_target_total:
+            current_ids = collect_unique_ids(categories)
+            if len(current_ids) < browse_target_total:
+                log.info(
+                    "Totale sotto al target Browse (%d/%d), avvio recovery ordinamenti",
+                    len(current_ids),
+                    browse_target_total,
+                )
+                recovery_categories = discover_browse_recovery_category(
+                    set(current_ids),
+                    browse_target_total,
+                    ssl_ctx=ssl_ctx,
+                    delay=args.browse_delay,
+                )
+                merge_categories(categories, recovery_categories)
+                if recovery_categories:
+                    sources.append("xbox-browse-recovery")
         source = " + ".join(sources) if sources else args.source
 
     if not categories:

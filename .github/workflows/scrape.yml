@@ -11,6 +11,7 @@ on:
         type: choice
         options:
           - all
+          - xboxBrowse
           - xboxOG
           - xbox360
           - fullXboxOne
@@ -37,7 +38,7 @@ jobs:
       - name: Discover BigIDs
         id: discover
         continue-on-error: true
-        run: python3 fetch_bigids.py --out bigids_new.json
+        run: python3 fetch_bigids.py --browse-delay 0 --out bigids_new.json
 
       - name: Use new or fallback BigIDs
         run: |

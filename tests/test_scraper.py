@@ -91,6 +91,14 @@ class BigIdParsingTests(unittest.TestCase):
 
         self.assertFalse(fetch_bigids.browse_has_more(token))
 
+    def test_build_browse_channel_key_matches_frontend_format(self):
+        filters = {"orderby": {"id": "orderby", "choices": [{"id": "Title Asc"}]}}
+
+        self.assertEqual(
+            fetch_bigids.build_browse_channel_key(filters),
+            "BROWSE_CHANNELID=_FILTERS=ORDERBY=TITLE ASC",
+        )
+
     def test_merge_categories_deduplicates_preserving_order(self):
         target = {"xboxOG": ["A", "B"]}
         fetch_bigids.merge_categories(target, {"xboxOG": ["B", "C"], "storeNew": ["D"]})

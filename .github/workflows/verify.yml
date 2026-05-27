@@ -7,7 +7,7 @@ on:
     inputs:
       min_bigids:
         description: "Soglia minima BigId scoperti"
-        default: "3000"
+        default: "16000"
         required: false
       min_xboxog_games:
         description: "Soglia minima giochi Xbox OG nello smoke test"
@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      MIN_BIGIDS: ${{ github.event.inputs.min_bigids || '3000' }}
+      MIN_BIGIDS: ${{ github.event.inputs.min_bigids || '16000' }}
       MIN_XBOXOG_GAMES: ${{ github.event.inputs.min_xboxog_games || '40' }}
     steps:
       - name: Checkout
@@ -40,7 +40,7 @@ jobs:
         run: python3 -m unittest discover -s tests
 
       - name: Verify BigId discovery
-        run: python3 fetch_bigids.py --out /tmp/bigids_verify.json
+        run: python3 fetch_bigids.py --browse-delay 0 --out /tmp/bigids_verify.json
 
       - name: Validate discovered BigIds
         run: |
@@ -61,6 +61,9 @@ jobs:
               raise SystemExit(f"Too few BigIds discovered: {total} < {min_bigids}")
           if not categories:
               raise SystemExit("No BigId categories discovered")
+          browse_count = categories.get("xboxBrowse", {}).get("count", 0)
+          if browse_count < 15000:
+              raise SystemExit(f"Xbox Browse endpoint returned too few IDs: {browse_count} < 15000")
           if "xboxOG" not in categories:
               raise SystemExit("Missing expected xboxOG category")
           PY

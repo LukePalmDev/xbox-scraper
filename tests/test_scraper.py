@@ -41,6 +41,24 @@ class BigIdParsingTests(unittest.TestCase):
             {"BRVM8RNWLXH1": "https://www.xbox.com/games/example"},
         )
 
+    def test_extract_store_product_ids_reads_microsoft_store_cards(self):
+        html = """
+        {"productId":"9pjpcb188svg","title":"Subnautica 2"}
+        {"productId":"BT5P2X999VH2","title":"Fortnite"}
+        {"productId":"9pjpcb188svg","title":"Duplicate"}
+        """
+
+        result = fetch_bigids.extract_store_product_ids(html)
+
+        self.assertEqual(result, ["9PJPCB188SVG", "BT5P2X999VH2"])
+
+    def test_merge_categories_deduplicates_preserving_order(self):
+        target = {"xboxOG": ["A", "B"]}
+        fetch_bigids.merge_categories(target, {"xboxOG": ["B", "C"], "storeNew": ["D"]})
+
+        self.assertEqual(target["xboxOG"], ["A", "B", "C"])
+        self.assertEqual(target["storeNew"], ["D"])
+
     def test_legacy_biurls_parser_ignores_trailing_js(self):
         content = """
         biUrls = {

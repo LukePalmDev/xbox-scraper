@@ -54,6 +54,14 @@ Scoprire o aggiornare i BigId:
 python3 fetch_bigids.py --out bigids.json
 ```
 
+La discovery predefinita usa una fonte combinata: bundle Xbox piu listing paginati Microsoft Store. Per limitare la fonte:
+
+```bash
+python3 fetch_bigids.py --source xbox --out bigids.json
+python3 fetch_bigids.py --source store --out bigids-store.json
+python3 fetch_bigids.py --source combined --store-pages 10 --out bigids.json
+```
+
 Generare catalogo completo per il mercato italiano:
 
 ```bash

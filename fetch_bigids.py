@@ -52,6 +52,10 @@ XBOX_PAGES = [
     "https://www.xbox.com/en-US/games",
 ]
 
+MS_STORE_LISTINGS = {
+    "storeMostPopular": "https://www.microsoft.com/en-us/store/most-popular/games/xbox",
+}
+
 
 # ---------------------------------------------------------------------------
 # GAP 2 — Discovery URL bundle JS dalla pagina Xbox
@@ -159,9 +163,15 @@ CATEGORY_LABELS = {
     "autoHDR":         "Auto HDR",
     "startingat":      "Starting at...",
     "xboxone":         "Xbox One (legacy)",
+    "storeMostPopular": "Microsoft Store - Most popular",
+    "storeTopPaid":     "Microsoft Store - Top paid",
+    "storeTopFree":     "Microsoft Store - Top free",
+    "storeNew":         "Microsoft Store - New",
+    "storeDeals":       "Microsoft Store - Deals",
 }
 
 BIGID_RE = re.compile(r'"([A-Z0-9]{9,12})"')
+STORE_PRODUCT_ID_RE = re.compile(r'"productId"\s*:\s*"([A-Za-z0-9]{9,12})"')
 
 
 def extract_game_id_arrays(js_content: str) -> dict[str, list[str]]:
@@ -215,6 +225,75 @@ def load_from_local_file(path: str) -> dict[str, list[str]]:
     return {}
 
 
+def extract_store_product_ids(html: str) -> list[str]:
+    """Estrae ProductId dalle pagine listing di microsoft.com/store."""
+    ids = [m.upper() for m in STORE_PRODUCT_ID_RE.findall(html)]
+    return list(dict.fromkeys(ids))
+
+
+def discover_xbox_categories(pages: list[str], ssl_ctx=None) -> tuple[dict[str, list[str]], str]:
+    """Scopre categorie BigId dai bundle Xbox."""
+    for page_url in pages:
+        log.info("--- Provo Xbox: %s", page_url)
+        bundle_url, js_content = discover_biurls_bundle(page_url, ssl_ctx=ssl_ctx)
+        if js_content:
+            categories = extract_game_id_arrays(js_content)
+            if not categories:
+                url_map = extract_biurls_object(js_content)
+                if url_map:
+                    categories = {"unknown": list(url_map.keys())}
+            if categories:
+                return categories, bundle_url or page_url
+            log.warning("Bundle trovato ma nessun BigId estratto, provo la prossima pagina...")
+    return {}, ""
+
+
+def discover_store_categories(
+    ssl_ctx=None,
+    max_pages: int = 20,
+    delay: float = 0.1,
+) -> tuple[dict[str, list[str]], str]:
+    """
+    Scopre ProductId dalle pagine Microsoft Store paginate.
+    Ogni listing restituisce fino a 50 prodotti per pagina via skipitems.
+    """
+    categories: dict[str, list[str]] = {}
+    for key, base_url in MS_STORE_LISTINGS.items():
+        ids: list[str] = []
+        for page_idx in range(max_pages):
+            skip = page_idx * 50
+            separator = "&" if "?" in base_url else "?"
+            url = base_url if skip == 0 else f"{base_url}{separator}skipitems={skip}"
+            log.info("[%s] pagina skipitems=%d", key, skip)
+            try:
+                html = fetch_with_retry(url, headers=HEADERS_HTML, ssl_ctx=ssl_ctx, timeout=30)
+            except Exception as e:
+                log.warning("[%s] errore pagina %s: %s", key, url, e)
+                break
+            page_ids = extract_store_product_ids(html)
+            if not page_ids:
+                break
+            for gid in page_ids:
+                if gid not in ids:
+                    ids.append(gid)
+            if len(page_ids) < 50:
+                break
+            time.sleep(delay)
+        if ids:
+            categories[key] = ids
+            log.info("  %-20s -> %4d ID", key, len(ids))
+    return categories, "microsoft-store"
+
+
+def merge_categories(target: dict[str, list[str]], incoming: dict[str, list[str]]) -> None:
+    """Unisce categorie deduplicando gli ID e preservando ordine."""
+    for key, ids in incoming.items():
+        bucket = target.setdefault(key, [])
+        for gid in ids:
+            if gid not in bucket:
+                bucket.append(gid)
+
+
 # ---------------------------------------------------------------------------
 # Entrypoint
 # ---------------------------------------------------------------------------
@@ -229,6 +308,10 @@ def main():
                         help="File JS locale da cui estrarre i BigId")
     parser.add_argument("--out", default="bigids.json",
                         help="File JSON di output (default: bigids.json)")
+    parser.add_argument("--source", choices=["xbox", "store", "combined"], default="combined",
+                        help="Fonte discovery automatica: xbox, store o combined (default)")
+    parser.add_argument("--store-pages", type=int, default=10,
+                        help="Numero massimo di pagine Microsoft Store per listing (default: 10)")
     parser.add_argument("--no-verify-ssl", action="store_true",
                         help="Disabilita verifica certificati SSL")
     parser.add_argument("--verbose", "-v", action="store_true",
@@ -262,22 +345,23 @@ def main():
         source = args.bundle
 
     else:
-        # Modalità auto: discovery dalla pagina Xbox
-        pages = [args.page] if args.page else XBOX_PAGES
-        for page_url in pages:
-            log.info("--- Provo: %s", page_url)
-            bundle_url, js_content = discover_biurls_bundle(page_url, ssl_ctx=ssl_ctx)
-            if js_content:
-                categories = extract_game_id_arrays(js_content)
-                if not categories:
-                    url_map = extract_biurls_object(js_content)
-                    if url_map:
-                        categories = {"unknown": list(url_map.keys())}
-                source = bundle_url or page_url
-                if categories:
-                    break
-                else:
-                    log.warning("Bundle trovato ma nessun BigId estratto, provo la prossima pagina...")
+        # Modalità auto: discovery dalle fonti selezionate
+        sources: list[str] = []
+        if args.source in ("xbox", "combined"):
+            pages = [args.page] if args.page else XBOX_PAGES
+            xbox_categories, xbox_source = discover_xbox_categories(pages, ssl_ctx=ssl_ctx)
+            merge_categories(categories, xbox_categories)
+            if xbox_source:
+                sources.append(xbox_source)
+        if args.source in ("store", "combined") and not args.page:
+            store_categories, store_source = discover_store_categories(
+                ssl_ctx=ssl_ctx,
+                max_pages=args.store_pages,
+            )
+            merge_categories(categories, store_categories)
+            if store_source:
+                sources.append(store_source)
+        source = " + ".join(sources) if sources else args.source
 
     if not categories:
         log.error("Nessun BigId trovato.")

@@ -7,10 +7,11 @@ Costruire un catalogo statico dei giochi Xbox esposti dalla pagina pubblica di r
 Il flusso attuale:
 
 1. scopre i BigId dal bundle JavaScript della pagina Xbox;
-2. salva l'elenco normalizzato in `bigids.json`;
-3. interroga Display Catalog API per recuperare metadati, immagini e prezzi;
-4. salva `games.json`;
-5. genera `index.html`, pubblicabile su GitHub Pages.
+2. integra ProductId dalle pagine Microsoft Store paginate;
+3. salva l'elenco normalizzato in `bigids.json`;
+4. interroga Display Catalog API per recuperare metadati, immagini e prezzi;
+5. salva `games.json`;
+6. genera `index.html`, pubblicabile su GitHub Pages.
 
 Non vengono scaricati giochi, binari o asset protetti oltre alle immagini pubbliche referenziate dal catalogo.
 
@@ -19,6 +20,7 @@ Non vengono scaricati giochi, binari o asset protetti oltre alle immagini pubbli
 | Area | Stato |
 | --- | --- |
 | Discovery BigId | Implementata in `fetch_bigids.py` |
+| Discovery Microsoft Store | Implementata via listing paginati `microsoft.com/store` |
 | Categorie BigId | Implementate in `bigids.json` |
 | Scraping catalogo | Implementato in `fetch_xbox_og.py` |
 | Generazione HTML | Isolata in `html_builder.py` |
@@ -58,6 +60,14 @@ Snapshot locale:
       |
       v
 [bigids.json]
+
+[Microsoft Store listing]
+      |
+      v
+[productId paginati]
+      |
+      v
+[bigids.json]
       |
       v
 [Display Catalog API]
@@ -80,6 +90,14 @@ Snapshot locale:
 2. bundle diretto passato con `--bundle`;
 3. file locale passato con `--input`;
 4. lista di pagine Xbox candidate (`it-IT` ed `en-US`).
+
+In modalita automatica la sorgente predefinita e `combined`: unisce il bundle Xbox con la listing Microsoft Store paginata `most-popular`. La fonte Store e piu lenta del bundle Xbox, quindi il default usa 10 pagine da 50 prodotti. Per ridurre scope o tempi:
+
+```bash
+python3 fetch_bigids.py --source xbox
+python3 fetch_bigids.py --source store --store-pages 10
+python3 fetch_bigids.py --source combined
+```
 
 La discovery scarica l'HTML, estrae gli URL `<script src="...">`, ordina i bundle per priorita e cerca marker noti:
 

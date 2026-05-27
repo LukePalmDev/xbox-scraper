@@ -231,8 +231,10 @@ class HtmlBuilderTests(unittest.TestCase):
         html = html_builder.build_html(games, "IT", "Xbox Original (OG)")
 
         self.assertIn("Xbox — 1 giochi", html)
-        self.assertIn('class="game-card"', html)
+        self.assertIn('<a class="game-card" role="listitem" href="https://www.xbox.com/games/store/-/BS7SQNNRB28W"', html)
         self.assertIn('data-cats="xbox-original-og fps-boost-series-x"', html)
+        self.assertIn('grid-template-columns:repeat(10,minmax(0,1fr))', html)
+        self.assertIn('.pill-grid { grid-template-columns:1fr; }', html)
         self.assertIn("FPS Boost Series X", html)
         self.assertIn("Prezzo N/D", html)
         self.assertIn("Action &amp; adventure", html)

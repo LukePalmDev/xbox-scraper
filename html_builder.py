@@ -72,10 +72,11 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
         ) or '<span class="tag tag-cat">—</span>'
         genre_label_esc = html_escape.escape(g["genre"]) if g["genre"] else "—"
 
-        title_html = f'<a href="{store_url}" target="_blank" rel="noopener" class="card-link">{t}</a>' if store_url else t
+        card_tag = "a" if store_url else "div"
+        link_attrs = f' href="{store_url}" target="_blank" rel="noopener"' if store_url else ""
 
         card_items.append(f"""
-        <div class="game-card" role="listitem"
+        <{card_tag} class="game-card" role="listitem"{link_attrs}
              data-title="{t.lower()}"
              data-cat="{cat_slug}"
              data-cats="{cat_slugs}"
@@ -83,7 +84,7 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
              data-price-num="{g['price_num']:.2f}">
           <div class="img-wrap">{img_tag}</div>
           <div class="card-body">
-            <div class="card-title">{title_html}</div>
+            <div class="card-title">{t}</div>
             <div class="card-tags">
               {cat_tags}
               <span class="tag tag-genre">{genre_label_esc}</span>
@@ -93,7 +94,7 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
             </div>
             <div class="card-id">{g["id"]}</div>
           </div>
-        </div>""")
+        </{card_tag}>""")
 
     total = len(games)
     cards = "".join(card_items)
@@ -126,16 +127,18 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
   .search-wrap input::placeholder {{ color:var(--muted); }}
   .si {{ position:absolute; left:9px; top:50%; transform:translateY(-50%); color:var(--muted); font-size:.9rem; }}
   select {{ background:var(--panel); border:1px solid var(--border); color:var(--text); padding:8px 12px; font-family:'Share Tech Mono',monospace; font-size:.78rem; outline:none; cursor:pointer; }}
-  .filter-row {{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }}
+  .filter-row {{ display:flex; align-items:start; gap:8px; }}
   .filter-label {{ font-family:'Share Tech Mono',monospace; font-size:.65rem; color:var(--muted); letter-spacing:.1em; white-space:nowrap; }}
-  .pill {{ background:var(--pill-bg); border:1px solid var(--border); color:var(--muted); padding:4px 10px; font-family:'Share Tech Mono',monospace; font-size:.65rem; cursor:pointer; transition:all .15s; white-space:nowrap; }}
+  .pill-grid {{ flex:1; display:grid; grid-template-columns:repeat(10,minmax(0,1fr)); gap:6px; }}
+  .pill {{ width:100%; min-height:28px; background:var(--pill-bg); border:1px solid var(--border); color:var(--muted); padding:4px 8px; font-family:'Share Tech Mono',monospace; font-size:.62rem; cursor:pointer; transition:all .15s; overflow-wrap:anywhere; }}
   .pill:hover {{ border-color:var(--green-dim); color:var(--text); }}
   .pill.active {{ background:var(--green-dim); border-color:var(--green); color:var(--dark); font-weight:600; }}
   .pill:focus-visible {{ outline:2px solid var(--green); outline-offset:2px; }}
   .no-results {{ display:none; position:relative; z-index:1; padding:60px 40px; text-align:center; font-family:'Share Tech Mono',monospace; color:var(--muted); }}
   .game-grid {{ position:relative; z-index:1; padding:18px 40px 60px; display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:10px; }}
-  .game-card {{ background:var(--panel); border:1px solid var(--border); overflow:hidden; transition:border-color .2s,transform .15s; content-visibility:auto; contain-intrinsic-size:200px 280px; }}
+  .game-card {{ display:block; background:var(--panel); border:1px solid var(--border); color:var(--text); text-decoration:none; overflow:hidden; transition:border-color .2s,transform .15s; content-visibility:auto; contain-intrinsic-size:200px 280px; }}
   .game-card:hover {{ border-color:var(--green-dim); transform:translateY(-3px); }}
+  .game-card:focus-visible {{ outline:2px solid var(--green); outline-offset:2px; }}
   .img-wrap {{ width:100%; aspect-ratio:16/9; background:#0a180a; overflow:hidden; }}
   .img-wrap img {{ width:100%; height:100%; object-fit:cover; display:block; }}
   .no-img {{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:2rem; color:var(--border); }}
@@ -147,8 +150,6 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
   .tag-genre {{ background:#0a0a1a; border:1px solid #334; color:#8899bb; }}
   .card-meta {{ display:flex; align-items:center; justify-content:space-between; }}
   .card-price {{ font-family:'Share Tech Mono',monospace; font-size:.7rem; color:var(--green); }}
-  .card-link {{ color:var(--text); text-decoration:none; }}
-  .card-link:hover {{ color:var(--green); }}
   .card-id {{ font-family:'Share Tech Mono',monospace; font-size:.55rem; color:var(--muted); margin-top:3px; }}
   .stats-bar {{ position:relative; z-index:1; display:flex; gap:2px; padding:10px 40px; border-bottom:1px solid var(--border); flex-wrap:wrap; }}
   .stat-item {{ background:var(--panel); border:1px solid var(--border); padding:8px 14px; text-align:center; min-width:80px; }}
@@ -159,6 +160,9 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
     header,.controls,.game-grid {{ padding-left:16px; padding-right:16px; }}
     h1 {{ font-size:1.4rem; }}
     .game-grid {{ grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); }}
+    .filter-row {{ flex-direction:column; align-items:stretch; }}
+    .filter-label {{ white-space:normal; }}
+    .pill-grid {{ grid-template-columns:1fr; }}
   }}
 </style>
 </head>
@@ -192,10 +196,12 @@ def build_html(games: list[dict], market: str, category_label: str) -> str:
   </div>
   <div class="filter-row" role="group" aria-label="Filtra per console">
     <span class="filter-label">CONSOLE:</span>
-    {cat_pills}  </div>
+    <div class="pill-grid">{cat_pills}    </div>
+  </div>
   <div class="filter-row" role="group" aria-label="Filtra per genere">
     <span class="filter-label">GENERE:</span>
-    {genre_pills}  </div>
+    <div class="pill-grid">{genre_pills}    </div>
+  </div>
 </div>
 
 <div class="no-results" id="no-results" aria-live="polite">// nessun risultato</div>

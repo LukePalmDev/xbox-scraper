@@ -27,7 +27,10 @@ Output: bigids.json con struttura:
 Richiede Python 3 standard — nessuna libreria esterna necessaria.
 """
 
+import base64
 import urllib.parse
+import urllib.request
+import urllib.error
 import json
 import re
 import time
@@ -40,6 +43,7 @@ from scraper_utils import (
     create_ssl_context,
     HEADERS_HTML,
     fetch_with_retry,
+    generate_ms_cv,
 )
 
 log = logging.getLogger(__name__)
@@ -55,6 +59,11 @@ XBOX_PAGES = [
 MS_STORE_LISTINGS = {
     "storeMostPopular": "https://www.microsoft.com/en-us/store/most-popular/games/xbox",
 }
+
+XBOX_BROWSE_PAGE = "https://www.xbox.com/it-IT/games/browse"
+XBOX_BROWSE_ENDPOINT = "https://emerald.xboxservices.com/xboxcomfd/browse"
+XBOX_BROWSE_CHANNEL_KEY = "BROWSE_CHANNELID=_FILTERS="
+EMPTY_BROWSE_FILTERS = "e30="  # base64("{}")
 
 
 # ---------------------------------------------------------------------------
@@ -155,6 +164,7 @@ def discover_biurls_bundle(
 
 # Label leggibili per ogni chiave gameIdArrays
 CATEGORY_LABELS = {
+    "xboxBrowse":     "Xbox Browse - All games",
     "xboxOG":          "Xbox Original (OG)",
     "xbox360":         "Xbox 360",
     "fullXboxOne":     "Xbox One",
@@ -229,6 +239,206 @@ def extract_store_product_ids(html: str) -> list[str]:
     """Estrae ProductId dalle pagine listing di microsoft.com/store."""
     ids = [m.upper() for m in STORE_PRODUCT_ID_RE.findall(html)]
     return list(dict.fromkeys(ids))
+
+
+def extract_preloaded_state(html: str) -> dict:
+    """
+    Estrae e parsa window.__PRELOADED_STATE__ dalla pagina Xbox.
+
+    La variabile contiene JSON valido, ma non è comodo usare una regex greedy
+    perché dopo l'oggetto possono esserci altre istruzioni nello stesso script.
+    """
+    marker = "window.__PRELOADED_STATE__"
+    marker_pos = html.find(marker)
+    if marker_pos < 0:
+        return {}
+
+    start = html.find("{", marker_pos)
+    if start < 0:
+        return {}
+
+    depth = 0
+    in_string = False
+    escaped = False
+    for pos in range(start, len(html)):
+        ch = html[pos]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return json.loads(html[start:pos + 1])
+
+    return {}
+
+
+def extract_browse_channel_data(
+    state: dict,
+    channel_key: str = XBOX_BROWSE_CHANNEL_KEY,
+) -> tuple[list[str], str | None, int | None]:
+    """Estrae ProductId, continuation token e totale dal canale Browse pre-caricato."""
+    channel = (
+        state.get("core2", {})
+        .get("channels", {})
+        .get("channelData", {})
+        .get(channel_key, {})
+        .get("data", {})
+    )
+    products = channel.get("products") or []
+    ids = [
+        str(product.get("productId", "")).upper()
+        for product in products
+        if product.get("productId")
+    ]
+    return list(dict.fromkeys(ids)), channel.get("encodedCT"), channel.get("totalItems")
+
+
+def browse_has_more(encoded_ct: str | None) -> bool:
+    """Ritorna True se il continuation token del Browse dichiara altre pagine."""
+    if not encoded_ct:
+        return False
+    try:
+        payload = json.loads(base64.b64decode(encoded_ct).decode("utf-8"))
+    except Exception:
+        return True
+    return bool(payload.get("HasMore"))
+
+
+def post_json_with_retry(
+    url: str,
+    payload: dict,
+    headers: dict,
+    ssl_ctx=None,
+    max_retries: int = 3,
+    timeout: int = 30,
+) -> dict:
+    """POST JSON con retry/backoff, usato dall'endpoint Emerald Browse."""
+    body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    for attempt in range(max_retries):
+        try:
+            req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=timeout, context=ssl_ctx) as resp:
+                return json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 503):
+                wait = 2 ** (attempt + 2)
+                log.warning("Rate limit Browse (%d), attendo %ds...", e.code, wait)
+                time.sleep(wait)
+            elif attempt == max_retries - 1:
+                raise
+            else:
+                wait = 2 ** attempt
+                log.debug("HTTP Browse %d, retry %d/%d in %ds", e.code, attempt + 1, max_retries, wait)
+                time.sleep(wait)
+        except Exception:
+            if attempt == max_retries - 1:
+                raise
+            wait = 2 ** attempt
+            log.debug("Errore Browse, retry %d/%d in %ds", attempt + 1, max_retries, wait)
+            time.sleep(wait)
+    return {}
+
+
+def fetch_browse_channel_page(
+    encoded_ct: str,
+    locale: str = "it-IT",
+    channel_key: str = XBOX_BROWSE_CHANNEL_KEY,
+    ssl_ctx=None,
+) -> dict:
+    """Scarica una pagina successiva del catalogo Xbox Browse via continuation token."""
+    endpoint = f"{XBOX_BROWSE_ENDPOINT}?{urllib.parse.urlencode({'locale': locale})}"
+    headers = {
+        "Accept": "application/json",
+        "Accept-Language": locale,
+        "Content-Type": "application/json",
+        "Origin": "https://www.xbox.com",
+        "Referer": "https://www.xbox.com/",
+        "User-Agent": HEADERS_HTML["User-Agent"],
+        "MS-CV": generate_ms_cv(),
+        "X-MS-API-Version": "1.1",
+    }
+    payload = {
+        "Filters": EMPTY_BROWSE_FILTERS,
+        "ReturnFilters": False,
+        "ChannelKeyToBeUsedInResponse": channel_key,
+        "EncodedCT": encoded_ct,
+        "ChannelId": "",
+    }
+    return post_json_with_retry(endpoint, payload, headers=headers, ssl_ctx=ssl_ctx, timeout=45)
+
+
+def discover_browse_categories(
+    page_url: str = XBOX_BROWSE_PAGE,
+    locale: str = "it-IT",
+    ssl_ctx=None,
+    max_pages: int = 0,
+    delay: float = 0.05,
+) -> tuple[dict[str, list[str]], str]:
+    """
+    Scopre gli ID dalla pagina Xbox Browse ufficiale.
+
+    La pagina espone i primi 25 prodotti in window.__PRELOADED_STATE__ e un
+    encodedCT. L'endpoint Emerald restituisce i successivi 25 prodotti e il
+    token nuovo fino a esaurimento.
+    """
+    log.info("--- Provo Xbox Browse: %s", page_url)
+    html = fetch_with_retry(page_url, headers=HEADERS_HTML, ssl_ctx=ssl_ctx, timeout=30)
+    state = extract_preloaded_state(html)
+    ids, encoded_ct, total_items = extract_browse_channel_data(state)
+    if not ids:
+        log.warning("Nessun prodotto nello stato iniziale Xbox Browse")
+        return {}, ""
+
+    seen: set[str] = set(ids)
+    ordered_ids = list(ids)
+    pages = 1
+    log.info("  xboxBrowse pagina iniziale -> %d ID (totale sito: %s)", len(ids), total_items or "N/D")
+
+    while encoded_ct and browse_has_more(encoded_ct):
+        if max_pages and pages >= max_pages:
+            log.info("Limite pagine Browse raggiunto: %d", max_pages)
+            break
+
+        data = fetch_browse_channel_page(
+            encoded_ct,
+            locale=locale,
+            channel_key=XBOX_BROWSE_CHANNEL_KEY,
+            ssl_ctx=ssl_ctx,
+        )
+        channel = data.get("channels", {}).get(XBOX_BROWSE_CHANNEL_KEY, {})
+        page_ids = [
+            str(product.get("productId", "")).upper()
+            for product in channel.get("products", [])
+            if product.get("productId")
+        ]
+        if not page_ids:
+            log.warning("Pagina Browse senza prodotti dopo %d pagine", pages)
+            break
+        for gid in page_ids:
+            if gid not in seen:
+                seen.add(gid)
+                ordered_ids.append(gid)
+
+        pages += 1
+        encoded_ct = channel.get("encodedCT")
+        if pages % 50 == 0:
+            log.info("  xboxBrowse pagine=%d -> %d ID unici", pages, len(ordered_ids))
+        if delay > 0:
+            time.sleep(delay)
+
+    log.info("  xboxBrowse completato -> %d ID unici in %d pagine", len(ordered_ids), pages)
+    return {"xboxBrowse": ordered_ids}, page_url
 
 
 def discover_xbox_categories(pages: list[str], ssl_ctx=None) -> tuple[dict[str, list[str]], str]:
@@ -308,8 +518,12 @@ def main():
                         help="File JS locale da cui estrarre i BigId")
     parser.add_argument("--out", default="bigids.json",
                         help="File JSON di output (default: bigids.json)")
-    parser.add_argument("--source", choices=["xbox", "store", "combined"], default="combined",
-                        help="Fonte discovery automatica: xbox, store o combined (default)")
+    parser.add_argument("--source", choices=["browse", "xbox", "store", "combined"], default="combined",
+                        help="Fonte discovery automatica: browse, xbox legacy, store o combined (default)")
+    parser.add_argument("--browse-pages", type=int, default=0,
+                        help="Numero massimo di pagine Xbox Browse, 0 = tutte (default)")
+    parser.add_argument("--browse-delay", type=float, default=0.05,
+                        help="Pausa tra pagine Xbox Browse in secondi (default: 0.05)")
     parser.add_argument("--store-pages", type=int, default=10,
                         help="Numero massimo di pagine Microsoft Store per listing (default: 10)")
     parser.add_argument("--no-verify-ssl", action="store_true",
@@ -347,7 +561,18 @@ def main():
     else:
         # Modalità auto: discovery dalle fonti selezionate
         sources: list[str] = []
-        if args.source in ("xbox", "combined"):
+        if args.source in ("browse", "combined"):
+            browse_page = args.page or XBOX_BROWSE_PAGE
+            browse_categories, browse_source = discover_browse_categories(
+                page_url=browse_page,
+                ssl_ctx=ssl_ctx,
+                max_pages=args.browse_pages,
+                delay=args.browse_delay,
+            )
+            merge_categories(categories, browse_categories)
+            if browse_source:
+                sources.append(browse_source)
+        if args.source == "xbox" or (args.source == "combined" and not args.page):
             pages = [args.page] if args.page else XBOX_PAGES
             xbox_categories, xbox_source = discover_xbox_categories(pages, ssl_ctx=ssl_ctx)
             merge_categories(categories, xbox_categories)

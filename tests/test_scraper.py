@@ -1,4 +1,5 @@
 import json
+import base64
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -51,6 +52,44 @@ class BigIdParsingTests(unittest.TestCase):
         result = fetch_bigids.extract_store_product_ids(html)
 
         self.assertEqual(result, ["9PJPCB188SVG", "BT5P2X999VH2"])
+
+    def test_extract_preloaded_state_reads_browse_channel(self):
+        state = {
+            "core2": {
+                "channels": {
+                    "channelData": {
+                        "BROWSE_CHANNELID=_FILTERS=": {
+                            "data": {
+                                "products": [
+                                    {"productId": "9pjpcb188svg"},
+                                    {"productId": "BT5P2X999VH2"},
+                                ],
+                                "encodedCT": "token",
+                                "totalItems": 16482,
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        html = f"""
+        <script>
+        window.__PRELOADED_STATE__ = {json.dumps(state)};
+        window.__OTHER__ = {{"ignored": true}};
+        </script>
+        """
+
+        parsed = fetch_bigids.extract_preloaded_state(html)
+        ids, encoded_ct, total_items = fetch_bigids.extract_browse_channel_data(parsed)
+
+        self.assertEqual(ids, ["9PJPCB188SVG", "BT5P2X999VH2"])
+        self.assertEqual(encoded_ct, "token")
+        self.assertEqual(total_items, 16482)
+
+    def test_browse_has_more_decodes_continuation_token(self):
+        token = base64.b64encode(json.dumps({"HasMore": False}).encode()).decode()
+
+        self.assertFalse(fetch_bigids.browse_has_more(token))
 
     def test_merge_categories_deduplicates_preserving_order(self):
         target = {"xboxOG": ["A", "B"]}

@@ -2,16 +2,18 @@
 
 ## Obiettivo
 
-Costruire un catalogo statico dei giochi Xbox esposti dalla pagina pubblica di retrocompatibilita/catalogo Xbox e dalla Microsoft Display Catalog API.
+Costruire un catalogo statico dei giochi Xbox esposti dalla pagina pubblica `https://www.xbox.com/it-IT/games/browse`, avvicinandosi il piu possibile al totale dichiarato dal sito, e arricchirli tramite Microsoft Display Catalog API.
 
 Il flusso attuale:
 
-1. scopre i BigId dal bundle JavaScript della pagina Xbox;
-2. integra ProductId dalle pagine Microsoft Store paginate;
-3. salva l'elenco normalizzato in `bigids.json`;
-4. interroga Display Catalog API per recuperare metadati, immagini e prezzi;
-5. salva `games.json`;
-6. genera `index.html`, pubblicabile su GitHub Pages.
+1. legge i primi ProductId e il `totalItems` da `window.__PRELOADED_STATE__`;
+2. pagina il canale Browse tramite endpoint Emerald e `encodedCT`;
+3. integra ProductId dai bundle legacy Xbox e dalle pagine Microsoft Store paginate;
+4. se il merge resta sotto `totalItems`, usa ordinamenti Browse ufficiali come recovery controllato;
+5. salva l'elenco normalizzato in `bigids.json`;
+6. interroga Display Catalog API per recuperare metadati, immagini e prezzi;
+7. salva `games.json`;
+8. genera `index.html`, pubblicabile su GitHub Pages.
 
 Non vengono scaricati giochi, binari o asset protetti oltre alle immagini pubbliche referenziate dal catalogo.
 
@@ -19,7 +21,9 @@ Non vengono scaricati giochi, binari o asset protetti oltre alle immagini pubbli
 
 | Area | Stato |
 | --- | --- |
-| Discovery BigId | Implementata in `fetch_bigids.py` |
+| Discovery Xbox Browse | Implementata in `fetch_bigids.py` via `encodedCT` |
+| Recovery Browse | Implementata con ordinamenti ufficiali fino a `totalItems` |
+| Discovery BigId legacy | Implementata in `fetch_bigids.py` |
 | Discovery Microsoft Store | Implementata via listing paginati `microsoft.com/store` |
 | Categorie BigId | Implementate in `bigids.json` |
 | Scraping catalogo | Implementato in `fetch_xbox_og.py` |
@@ -31,40 +35,39 @@ Non vengono scaricati giochi, binari o asset protetti oltre alle immagini pubbli
 | Pulizia artefatti locali | Implementata in `scripts/clean_artifacts.sh` |
 | Report differenze scrape | Implementato come artifact `scrape-report.json` nel workflow settimanale |
 | Output JSON | Implementato con `--json-out` |
-| Output HTML | Implementato con ricerca, filtri e sort |
+| Output HTML | Implementato con ricerca, filtri, sort e card cliccabili |
 | Deploy GitHub Pages | Implementato in `.github/workflows/pages.yml` |
 | Aggiornamento schedulato | Implementato in `.github/workflows/scrape.yml` |
 | Health check giornaliero | Implementato in `.github/workflows/verify.yml` |
 
-Snapshot locale:
+Snapshot locale del 2026-05-27:
 
 | Output | Conteggio |
 | --- | ---: |
-| BigId unici | 4446 |
-| Giochi in `games.json` | 4445 |
-| Card in `index.html` | 4445 |
+| BigId/ProductId unici | 16483 |
+| Giochi in `games.json` | 16482 |
+| Card in `index.html` | 16482 |
+| Missing Display Catalog | 1 (`BTQSPR43SR63`) |
 
 ## Architettura
 
 ```text
-[Pagina Xbox]
+[Pagina Xbox Browse]
       |
       v
-[HTML pubblico]
+[HTML pubblico con window.__PRELOADED_STATE__]
       |
       v
-[Script bundle JS]
+[encodedCT + endpoint Emerald Browse]
       |
       v
-[gameIdArrays / biUrls]
+[xboxBrowse]
       |
       v
-[bigids.json]
-
-[Microsoft Store listing]
+[bundle JS legacy + Microsoft Store listing]
       |
       v
-[productId paginati]
+[merge + recovery ordinamenti Browse]
       |
       v
 [bigids.json]
@@ -86,18 +89,58 @@ Snapshot locale:
 
 `fetch_bigids.py` prova in ordine:
 
-1. pagina passata con `--page`;
+1. file locale passato con `--input`;
 2. bundle diretto passato con `--bundle`;
-3. file locale passato con `--input`;
-4. lista di pagine Xbox candidate (`it-IT` ed `en-US`).
+3. pagina Browse passata con `--page` o default `https://www.xbox.com/it-IT/games/browse`;
+4. bundle legacy Xbox candidate (`it-IT` ed `en-US`);
+5. listing Microsoft Store.
 
-In modalita automatica la sorgente predefinita e `combined`: unisce il bundle Xbox con la listing Microsoft Store paginata `most-popular`. La fonte Store e piu lenta del bundle Xbox, quindi il default usa 10 pagine da 50 prodotti. Per ridurre scope o tempi:
+In modalita automatica la sorgente predefinita e `combined`: unisce Browse, bundle legacy e listing Microsoft Store paginata `most-popular`. Il Browse endpoint dichiara un `totalItems`; se la paginazione base termina prima, il recovery usa ordinamenti ufficiali (`Title Asc`, `Title Desc`, `ReleaseDate desc`, `MostPopular desc`) e aggiunge solo gli ID necessari a raggiungere quel totale.
+
+Per ridurre scope o tempi:
 
 ```bash
+python3 fetch_bigids.py --source browse
 python3 fetch_bigids.py --source xbox
 python3 fetch_bigids.py --source store --store-pages 10
-python3 fetch_bigids.py --source combined
+python3 fetch_bigids.py --source combined --browse-delay 0
 ```
+
+### Xbox Browse endpoint
+
+Pagina sorgente:
+
+```text
+https://www.xbox.com/it-IT/games/browse
+```
+
+Endpoint rilevato via DevTools/Playwright:
+
+```text
+POST https://emerald.xboxservices.com/xboxcomfd/browse?locale=it-IT
+```
+
+Payload base per le pagine successive:
+
+```json
+{
+  "Filters": "e30=",
+  "ReturnFilters": false,
+  "ChannelKeyToBeUsedInResponse": "BROWSE_CHANNELID=_FILTERS=",
+  "EncodedCT": "<continuation token>",
+  "ChannelId": ""
+}
+```
+
+Il primo `EncodedCT` arriva da `window.__PRELOADED_STATE__`. Ogni risposta contiene:
+
+| Campo | Uso |
+| --- | --- |
+| `channels["BROWSE_CHANNELID=_FILTERS="].products[].productId` | ProductId pagina corrente |
+| `totalItems` | Target dichiarato dal sito |
+| `encodedCT` | Continuation token successivo |
+
+Osservazione tecnica: il canale base puo chiudersi con `HasMore=false` prima del `totalItems`. Per questo il merge usa anche fonti legacy e recovery da ordinamenti Browse.
 
 La discovery scarica l'HTML, estrae gli URL `<script src="...">`, ordina i bundle per priorita e cerca marker noti:
 
@@ -128,8 +171,18 @@ Output `bigids.json`:
 ```json
 {
   "source": "https://www.xbox.com/...",
-  "total": 4277,
+  "total": 16483,
   "categories": {
+    "xboxBrowse": {
+      "label": "Xbox Browse - All games",
+      "count": 14986,
+      "ids": []
+    },
+    "xboxBrowseRecovery": {
+      "label": "Xbox Browse - Sort recovery",
+      "count": 221,
+      "ids": []
+    },
     "xboxOG": {
       "label": "Xbox Original (OG)",
       "count": 61,
@@ -212,12 +265,14 @@ Output della funzione `scrape()`:
 - ordinamento numerico del prezzo con `data-price-num`;
 - stato prezzo esplicito (`paid`, `free`, `unknown`) per distinguere gratis da prezzo non disponibile;
 - categorie sorgente multiple tramite `source_categories`, mantenendo `source_category` come valore primario compatibile;
-- link allo store Xbox tramite `https://www.xbox.com/games/store/-/<ProductId>`.
+- card interamente cliccabile tramite `https://www.xbox.com/games/store/-/<ProductId>`;
+- filtri/badge disposti in 10 colonne su desktop e in una colonna su mobile.
 
 Attributi principali delle card:
 
 ```html
-<div class="game-card"
+<a class="game-card"
+     href="https://www.xbox.com/games/store/-/<ProductId>"
      data-title="..."
      data-cat="xbox-original-og"
      data-genre="action-adventure"
@@ -241,7 +296,8 @@ Attributi principali delle card:
 - gira ogni giorno;
 - compila gli script;
 - esegue discovery BigId in un file temporaneo;
-- verifica che il numero di BigId sia sopra una soglia minima;
+- verifica che il numero di BigId sia sopra la soglia minima (default 16000);
+- verifica che il Browse endpoint restituisca almeno 15000 ID;
 - esegue uno scrape piccolo su `xboxOG`;
 - verifica che il JSON generato contenga risultati.
 
@@ -272,6 +328,7 @@ Quando lanciato manualmente, permette di configurare le soglie minime `min_bigid
 | --- | --- |
 | Xbox cambia struttura HTML o nomi bundle | `verify.yml` fallisce sulla discovery giornaliera |
 | Xbox cambia marker JS (`gameIdArrays`/`biUrls`) | `fetch_bigids.py` ha fallback locale/manuale |
+| Xbox cambia endpoint Browse o payload `encodedCT` | `verify.yml` fallisce sulla soglia Browse |
 | Display Catalog API cambia endpoint o schema | `verify.yml` fallisce sullo scrape campione |
 | Rate limit Microsoft | batch configurabile, delay, workers limitati, retry/backoff |
 | Prodotti delisted o non restituiti | tracciati come `missing_ids`, non considerati errore fatale |
@@ -280,13 +337,14 @@ Quando lanciato manualmente, permette di configurare le soglie minime `min_bigid
 
 | Priorita | Attivita |
 | --- | --- |
-| Media | Aggiungere test unitari per parsing `gameIdArrays`, `biUrls` e normalizzazione prodotto |
+| Media | Monitorare se il recovery Browse resta necessario o se Xbox stabilizza la paginazione base |
 | Media | Separare template HTML da logica Python se la UI cresce |
 
 ## Comandi di verifica locale
 
 ```bash
-python3 -m py_compile fetch_bigids.py fetch_xbox_og.py scraper_utils.py
-python3 fetch_bigids.py --out /tmp/bigids_verify.json
+python3 -m py_compile fetch_bigids.py fetch_xbox_og.py html_builder.py scraper_utils.py tests/test_scraper.py
+python3 -m unittest discover -s tests
+python3 fetch_bigids.py --browse-delay 0 --out /tmp/bigids_verify.json
 python3 fetch_xbox_og.py --ids /tmp/bigids_verify.json --category xboxOG --out /tmp/xbox_verify.html --json-out /tmp/xbox_verify.json
 ```

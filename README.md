@@ -2,22 +2,24 @@
 
 Scraper statico per costruire e pubblicare un catalogo navigabile dei giochi Xbox esposti dal catalogo pubblico Microsoft/Xbox.
 
-Il progetto recupera i BigId dai bundle JavaScript della pagina Xbox, interroga la Microsoft Display Catalog API, genera `games.json` e produce un `index.html` statico con ricerca, filtri e ordinamento. Non scarica giochi o contenuti protetti: usa solo metadati pubblici di catalogo.
+Il progetto recupera i ProductId/BigId dalla pagina Xbox Browse ufficiale e dalle fonti legacy Xbox, interroga la Microsoft Display Catalog API, genera `games.json` e produce un `index.html` statico con ricerca, filtri, ordinamento e card cliccabili. Non scarica giochi o contenuti protetti: usa solo metadati pubblici di catalogo.
 
 ## Stato
 
-Ultimo snapshot locale verificato:
+Ultimo snapshot locale verificato il 2026-05-27:
 
 | File | Stato |
 | --- | --- |
-| `bigids.json` | 4446 BigId unici |
-| `games.json` | 4445 giochi estratti |
+| `bigids.json` | 16483 BigId/ProductId unici |
+| `games.json` | 16482 giochi estratti |
 | `index.html` | catalogo statico generato per mercato IT |
+| Missing Display Catalog | 1 ID non restituito: `BTQSPR43SR63` |
 
 Categorie rilevate in `bigids.json`:
 
 | Categoria | BigId |
 | --- | ---: |
+| Xbox Browse - All games | 14986 |
 | Xbox Original (OG) | 61 |
 | Xbox 360 | 663 |
 | Xbox One | 4184 |
@@ -26,12 +28,13 @@ Categorie rilevate in `bigids.json`:
 | Auto HDR | 5 |
 | Starting at... | 333 |
 | Microsoft Store - Most popular | 299 |
+| Xbox Browse - Sort recovery | 221 |
 
 ## File principali
 
 | File | Scopo |
 | --- | --- |
-| `fetch_bigids.py` | Scopre il bundle Xbox e genera `bigids.json` |
+| `fetch_bigids.py` | Scopre Xbox Browse, fonti legacy e Store; genera `bigids.json` |
 | `fetch_xbox_og.py` | Interroga Display Catalog API e genera `games.json` + `index.html` |
 | `html_builder.py` | Genera l'interfaccia HTML statica |
 | `scraper_utils.py` | Utility condivise per HTTP, SSL, retry/backoff e MS-CV |
@@ -55,12 +58,21 @@ Scoprire o aggiornare i BigId:
 python3 fetch_bigids.py --out bigids.json
 ```
 
-La discovery predefinita usa una fonte combinata: bundle Xbox piu listing paginati Microsoft Store. Per limitare la fonte:
+La discovery predefinita usa una fonte combinata:
+
+1. pagina `https://www.xbox.com/it-IT/games/browse`;
+2. endpoint `https://emerald.xboxservices.com/xboxcomfd/browse?locale=it-IT` con continuation token `encodedCT`;
+3. bundle legacy Xbox con `gameIdArrays`/`biUrls`;
+4. listing paginati Microsoft Store;
+5. recovery controllato con ordinamenti Browse ufficiali quando il totale resta sotto `totalItems`.
+
+Per limitare la fonte:
 
 ```bash
+python3 fetch_bigids.py --source browse --out bigids-browse.json
 python3 fetch_bigids.py --source xbox --out bigids.json
 python3 fetch_bigids.py --source store --out bigids-store.json
-python3 fetch_bigids.py --source combined --store-pages 10 --out bigids.json
+python3 fetch_bigids.py --source combined --browse-delay 0 --store-pages 10 --out bigids.json
 ```
 
 Generare catalogo completo per il mercato italiano:
@@ -100,6 +112,8 @@ Le chiavi dipendono dal bundle Xbox e sono salvate in `bigids.json`.
 | Chiave | Descrizione |
 | --- | --- |
 | `all` | Tutti i BigId unici |
+| `xboxBrowse` | Catalogo Xbox Browse paginato |
+| `xboxBrowseRecovery` | ID recuperati da ordinamenti Browse alternativi |
 | `xboxOG` | Xbox Original |
 | `xbox360` | Xbox 360 |
 | `fullXboxOne` | Catalogo Xbox One |
@@ -118,14 +132,15 @@ Le chiavi dipendono dal bundle Xbox e sono salvate in `bigids.json`.
 - filtro per genere;
 - ordinamento per nome, prezzo e console;
 - statistiche distinte per giochi gratuiti e prezzo non disponibile;
-- card con immagine, prezzo, tag, ID prodotto e link allo store Xbox.
+- card interamente cliccabili verso lo store Xbox;
+- badge/filtro in 10 colonne su desktop e in colonna singola su telefono.
 
 ## Automazioni GitHub
 
 | Workflow | Frequenza | Scopo |
 | --- | --- | --- |
 | `.github/workflows/ci.yml` | push/PR | Compilazione sintattica Python |
-| `.github/workflows/verify.yml` | giornaliera + manuale | Health check su codice, discovery bundle e API Display Catalog; soglie configurabili nel run manuale |
+| `.github/workflows/verify.yml` | giornaliera + manuale | Health check su codice, Browse endpoint, discovery legacy e API Display Catalog; soglie configurabili nel run manuale |
 | `.github/workflows/scrape.yml` | settimanale + manuale | Aggiorna `bigids.json`, `games.json` e `index.html`, poi committa se cambiano; carica un artifact `scrape-report.json` con aggiunte/rimozioni |
 | `.github/workflows/pages.yml` | push su `master` | Pubblica GitHub Pages quando cambiano `index.html` o `games.json` |
 
@@ -152,7 +167,7 @@ sh scripts/clean_artifacts.sh
 Verifica discovery bundle senza modificare i dati versionati:
 
 ```bash
-python3 fetch_bigids.py --out /tmp/bigids_verify.json
+python3 fetch_bigids.py --browse-delay 0 --out /tmp/bigids_verify.json
 ```
 
 Verifica API su una categoria piccola:

@@ -6,6 +6,10 @@ on:
     paths:
       - "index.html"
       - "games.json"
+      - "data/**"
+      - "CNAME"
+      - ".nojekyll"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:

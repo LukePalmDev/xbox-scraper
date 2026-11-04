@@ -1,9 +1,11 @@
 import json
 import base64
+import re
 import tempfile
 import unittest
 from types import SimpleNamespace
 from pathlib import Path
+from unittest.mock import patch
 
 import fetch_bigids
 import fetch_xbox_og
@@ -208,6 +210,77 @@ class ProductParsingTests(unittest.TestCase):
         self.assertIsNone(unknown["price"])
         self.assertEqual(unknown["price_status"], "unknown")
 
+    def test_parse_product_skips_empty_image_uri_and_upgrades_http(self):
+        product = {
+            "ProductId": "IMG12345678",
+            "LocalizedProperties": [{
+                "ProductTitle": "Img",
+                "Images": [
+                    {"ImagePurpose": "BoxArt", "Uri": ""},
+                    {"ImagePurpose": "Tile", "Uri": "http://images.example/tile.jpg"},
+                ],
+            }],
+            "DisplaySkuAvailabilities": [{"Availabilities": []}],
+            "Properties": {},
+        }
+
+        parsed = fetch_xbox_og.parse_product(product, "IMG12345678", "Test")
+
+        self.assertEqual(parsed["img"], "https://images.example/tile.jpg")
+
+    def test_process_batch_result_matches_product_id_case(self):
+        product = {
+            "ProductId": "bs7sqnnrb28w",
+            "LocalizedProperties": [{"ProductTitle": "Armed and Dangerous", "Images": []}],
+            "DisplaySkuAvailabilities": [
+                {"Availabilities": [
+                    {"OrderManagementData": {"Price": {"ListPrice": 1, "CurrencyCode": "EUR"}}}
+                ]}
+            ],
+            "Properties": {"Categories": ["Action & adventure"]},
+        }
+        seen: set[str] = set()
+
+        games, missing = fetch_xbox_og._process_batch_result(
+            ["BS7SQNNRB28W"],
+            [product],
+            {"BS7SQNNRB28W": ["Xbox Original (OG)"]},
+            seen,
+        )
+
+        self.assertEqual(missing, [])
+        self.assertEqual(len(games), 1)
+        self.assertEqual(games[0]["source_category"], "Xbox Original (OG)")
+        self.assertEqual(games[0]["id"], "bs7sqnnrb28w")
+
+        again, missing_again = fetch_xbox_og._process_batch_result(
+            ["BS7SQNNRB28W"],
+            [product],
+            {"BS7SQNNRB28W": ["Xbox Original (OG)"]},
+            seen,
+        )
+        self.assertEqual(again, [])
+        self.assertEqual(missing_again, [])
+
+        _, truly_missing = fetch_xbox_og._process_batch_result(
+            ["ZZMISSING1"],
+            [],
+            {},
+            set(),
+        )
+        self.assertEqual(truly_missing, ["ZZMISSING1"])
+
+    def test_merge_games_keeps_existing_catalog(self):
+        merged = fetch_xbox_og.merge_games(
+            [{"id": "AAA", "title": "Old"}, {"id": "BBB", "title": "Keep"}],
+            [{"id": "aaa", "title": "New"}, {"id": "CCC", "title": "Add"}],
+        )
+
+        self.assertEqual(
+            [(game["id"], game["title"]) for game in merged],
+            [("aaa", "New"), ("BBB", "Keep"), ("CCC", "Add")],
+        )
+
 
 class JsonFixtureTests(unittest.TestCase):
     def test_bigids_fixture_has_expected_shape(self):
@@ -220,32 +293,88 @@ class JsonFixtureTests(unittest.TestCase):
 
 
 class HtmlBuilderTests(unittest.TestCase):
-    def test_build_html_renders_cards_and_controls(self):
-        games = [
-            {
-                "id": "BS7SQNNRB28W",
-                "title": "Armed and Dangerous",
-                "img": None,
-                "price": "19.99 EUR",
-                "price_num": 19.99,
-                "price_status": "paid",
-                "source_category": "Xbox Original (OG)",
-                "source_categories": ["Xbox Original (OG)", "FPS Boost Series X"],
-                "genre": "Action & adventure",
-                "url": "https://www.xbox.com/games/store/-/BS7SQNNRB28W",
-            }
-        ]
+    def _game(self, **overrides):
+        game = {
+            "id": "BS7SQNNRB28W",
+            "title": "Armed and Dangerous",
+            "img": None,
+            "price": "19.99 EUR",
+            "price_num": 19.99,
+            "price_status": "paid",
+            "source_category": "Xbox Original (OG)",
+            "source_categories": ["Xbox Original (OG)", "FPS Boost Series X"],
+            "genre": "Action & adventure",
+            "url": "https://www.xbox.com/games/store/-/BS7SQNNRB28W",
+        }
+        game.update(overrides)
+        return game
+
+    def test_slugify_matches_filter_tokens(self):
+        self.assertEqual(html_builder.slugify("FPS Boost Series X"), "fps-boost-series-x")
+        self.assertEqual(html_builder.slugify("Action & adventure"), "action-adventure")
+        self.assertEqual(html_builder.slugify(""), "")
+
+    def test_build_html_shell_keeps_controls_without_inlining_games(self):
+        games = [self._game()]
 
         html = html_builder.build_html(games, "IT", "Xbox Original (OG)")
 
         self.assertIn("Xbox — 1 giochi", html)
-        self.assertIn('<a class="game-card" role="listitem" href="https://www.xbox.com/games/store/-/BS7SQNNRB28W"', html)
-        self.assertIn('data-cats="xbox-original-og fps-boost-series-x"', html)
+        self.assertIn("game-card", html)
         self.assertIn('grid-template-columns:repeat(10,minmax(0,1fr))', html)
         self.assertIn('.pill-grid { grid-template-columns:1fr; }', html)
         self.assertIn("FPS Boost Series X", html)
         self.assertIn("Prezzo N/D", html)
         self.assertIn("Action &amp; adventure", html)
+        self.assertIn("[^a-z0-9]+", html)
+        self.assertNotIn("/xbox-scraper/", html)
+        self.assertNotIn("Armed and Dangerous", html)
+        self.assertIn("data/games-000.json", html)
+        self.assertLess(len(html.encode("utf-8")), 200_000)
+
+    def test_write_game_shards_preserves_every_field(self):
+        games = [
+            self._game(id="ZZZ123456789", title='ZZ "Quoted" Game', img=None),
+            self._game(id="AAA123456789", title="Alpha", img="https://images.example/a.jpg", price=None, price_num=0, price_status="unknown"),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp) / "data"
+            paths = html_builder.write_game_shards(games, directory, shard_size=1)
+            self.assertEqual(len(paths), 2)
+            self.assertTrue(all(path.startswith("data/games-") and "?v=" in path for path in paths))
+
+            loaded = []
+            for rel in paths:
+                loaded.extend(json.loads((Path(tmp) / rel.split("?", 1)[0]).read_text(encoding="utf-8")))
+            self.assertEqual(loaded, sorted(games, key=lambda game: game["title"].lower()))
+
+            html_builder.write_game_shards(games[:1], directory, shard_size=1)
+            self.assertEqual(len(list(directory.glob("games-*.json"))), 1)
+
+    def test_published_shards_match_games_json(self):
+        games_path = Path("games.json")
+        html_path = Path("index.html")
+        if not games_path.exists() or not html_path.exists():
+            self.skipTest("catalogo non generato")
+        games = json.loads(games_path.read_text(encoding="utf-8"))
+        html = html_path.read_text(encoding="utf-8")
+        match = re.search(r'id="shard-manifest">(.*?)</script>', html)
+        self.assertIsNotNone(match)
+        shards = json.loads(match.group(1))
+        self.assertGreater(len(shards), 1)
+        loaded = []
+        for rel in shards:
+            file_path = Path(rel.split("?", 1)[0])
+            self.assertFalse(file_path.is_absolute())
+            self.assertFalse(str(file_path).startswith("/"))
+            loaded.extend(json.loads(file_path.read_text(encoding="utf-8")))
+        self.assertEqual(len(loaded), len(games))
+        by_id = {game["id"]: game for game in games}
+        self.assertEqual(set(by_id), {game["id"] for game in loaded})
+        for game in loaded:
+            self.assertEqual(game, by_id[game["id"]])
+        self.assertNotIn("/xbox-scraper/", html)
+        self.assertLess(len(html.encode("utf-8")), 200_000)
 
 
 class CliValidationTests(unittest.TestCase):
@@ -273,6 +402,10 @@ class CliValidationTests(unittest.TestCase):
     def test_validate_args_rejects_missing_ids_file(self):
         with self.assertRaises(SystemExit):
             fetch_xbox_og.validate_args(self._args(ids="/tmp/xbox-scraper-missing-bigids.json"))
+
+    def test_select_category_eof_uses_all(self):
+        with patch("builtins.input", side_effect=EOFError), patch("sys.stdout"):
+            self.assertEqual(fetch_xbox_og.select_category_interactive("bigids.json"), "all")
 
 
 if __name__ == "__main__":

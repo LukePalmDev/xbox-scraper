@@ -23,7 +23,7 @@ import sys
 import logging
 from pathlib import Path
 
-from html_builder import build_html
+from html_builder import build_html, write_game_shards
 
 from scraper_utils import (
     create_ssl_context,
@@ -223,7 +223,11 @@ def select_category_interactive(bigids_path: str | None = None) -> str:
             if 1 <= n <= len(options):
                 chosen_key = options[n - 1][0]
                 break
-        except (ValueError, EOFError):
+        except EOFError:
+            print("\n  Input non disponibile, uso la prima categoria.")
+            chosen_key = options[0][0]
+            break
+        except ValueError:
             pass
         print(f"  Inserisci un numero tra 1 e {len(options)}.")
 
@@ -282,10 +286,18 @@ def parse_product(p: dict, game_id: str, source_category: str, source_categories
     img_url = None
     for purpose in ["SuperHeroArt", "TitledHeroArt", "BrandedKeyArt", "BoxArt", "Tile"]:
         img = next((i for i in images if i.get("ImagePurpose") == purpose), None)
-        if img:
-            raw = img.get("Uri", "")
-            img_url = ("https:" + raw) if raw.startswith("//") else raw
-            break
+        if not img:
+            continue
+        raw = (img.get("Uri") or "").strip()
+        if not raw:
+            continue
+        if raw.startswith("//"):
+            img_url = "https:" + raw
+        elif raw.startswith("http://"):
+            img_url = "https://" + raw[len("http://"):]
+        else:
+            img_url = raw
+        break
 
     # Prezzo con valore numerico per sort
     price_str = None
@@ -335,27 +347,84 @@ def parse_product(p: dict, game_id: str, source_category: str, source_categories
     }
 
 
+def _norm_id(value: str) -> str:
+    return (value or "").upper()
+
+
+def _category_list(id_to_cat: dict[str, list[str]], *keys: str) -> list[str]:
+    """Cerca le categorie per id esatto e, in fallback, per maiuscole."""
+    for key in keys:
+        if not key:
+            continue
+        if key in id_to_cat:
+            return id_to_cat[key]
+        upper = key.upper()
+        if upper in id_to_cat:
+            return id_to_cat[upper]
+    return []
+
+
+def merge_games(existing: list[dict], new: list[dict]) -> list[dict]:
+    """Unisce il catalogo già salvato con i giochi appena scaricati.
+
+    Lo stesso id, ignorando le maiuscole, viene sostituito dal record nuovo.
+    """
+    merged: dict[str, dict] = {}
+    order: list[str] = []
+    for game in list(existing) + list(new):
+        gid = str(game.get("id") or "")
+        if not gid:
+            continue
+        key = _norm_id(gid)
+        if key not in merged:
+            order.append(key)
+        merged[key] = game
+    return [merged[key] for key in order]
+
+
+def _categories_for_ids(ids: list[str], ids_file: str | None) -> dict[str, list[str]]:
+    """Mappa categoria per un resume, senza interrompere se il file BigId manca."""
+    try:
+        _, all_map = load_ids(ids_file, "all")
+    except SystemExit:
+        log.warning("Resume senza mappa categorie: file BigId non disponibile")
+        return {}
+    found: dict[str, list[str]] = {}
+    for gid in ids:
+        found[gid] = _category_list(all_map, gid)
+    return found
+
+
 def _process_batch_result(
     batch: list[str],
     products: list[dict],
     id_to_cat: dict[str, list[str]],
     seen_ids: set[str],
 ) -> tuple[list[dict], list[str]]:
-    """Processa i risultati di un batch: parse, deduplica, traccia missing."""
+    """Processa i risultati di un batch: parse, deduplica, traccia missing.
+
+    `seen_ids` contiene id normalizzati in maiuscolo. Il confronto con la
+    risposta API è case-insensitive, perché Display Catalog a volte cambia caso.
+    """
     new_games: list[dict] = []
     batch_missing: list[str] = []
     returned_ids: set[str] = set()
+    seen_norm = {_norm_id(item) for item in seen_ids}
+    seen_ids.clear()
+    seen_ids.update(seen_norm)
     for p in products:
         pid = p.get("ProductId", "")
-        returned_ids.add(pid)
-        source_categories = id_to_cat.get(pid, id_to_cat.get(batch[0], []))
+        returned_ids.add(_norm_id(pid))
+        source_categories = _category_list(id_to_cat, pid, batch[0] if batch else "")
         source_cat = source_categories[0] if source_categories else ""
         parsed = parse_product(p, pid, source_cat, source_categories)
-        if parsed["id"] not in seen_ids:
+        norm = _norm_id(parsed["id"])
+        if norm not in seen_ids:
             new_games.append(parsed)
-            seen_ids.add(parsed["id"])
+            seen_ids.add(norm)
     for bid in batch:
-        if bid not in returned_ids and bid not in seen_ids:
+        norm_bid = _norm_id(bid)
+        if norm_bid not in returned_ids and norm_bid not in seen_ids:
             batch_missing.append(bid)
     return new_games, batch_missing
 
@@ -495,11 +564,24 @@ def main():
     else:
         category_key = select_category_interactive(args.ids)
 
-    # Caricamento BigId
+    # Caricamento BigId. Il resume ritenta solo gli ID falliti e li unisce
+    # al catalogo già scritto: non sostituisce games.json con il sottoinsieme.
+    existing_games: list[dict] = []
+    json_out = args.json_out or "games.json"
     if args.resume and Path("failed_ids.json").exists():
-        failed_data = json.loads(Path("failed_ids.json").read_text())
+        failed_data = json.loads(Path("failed_ids.json").read_text(encoding="utf-8"))
         ids = failed_data if isinstance(failed_data, list) else failed_data.get("ids", [])
-        id_to_cat: dict[str, list[str]] = {}
+        id_to_cat = _categories_for_ids(ids, args.ids)
+        json_path = Path(json_out)
+        if json_path.exists():
+            try:
+                loaded = json.loads(json_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                loaded = None
+            if isinstance(loaded, list):
+                existing_games = loaded
+            else:
+                log.warning("Resume: %s non è una lista, il catalogo esistente non viene unito", json_out)
         log.info("Resume: %d ID da ritentare", len(ids))
     else:
         ids, id_to_cat = load_ids(args.ids, category_key)
@@ -548,17 +630,21 @@ def main():
     if missing:
         log.info("%d ID non restituiti dall'API (delisted/invalidi)", len(missing))
 
+    if existing_games:
+        games = merge_games(existing_games, games)
+
     # Output JSON
-    json_out = args.json_out or "games.json"
     Path(json_out).write_text(
         json.dumps(games, indent=None, ensure_ascii=False),
         encoding="utf-8",
     )
     log.info("Dati JSON salvati in: %s", json_out)
 
-    # Output HTML
-    output = build_html(games, args.market, cat_label)
-    Path(args.out).write_text(output, encoding="utf-8")
+    # Shell HTML + shard JSON accanto alla pagina (niente catalogo inline).
+    out_path = Path(args.out)
+    shard_paths = write_game_shards(games, out_path.parent / "data")
+    output = build_html(games, args.market, cat_label, shard_paths)
+    out_path.write_text(output, encoding="utf-8")
 
     log.info("Completato: %d giochi, %d errori, %d missing", len(games), len(failed), len(missing))
     log.info("File generato: %s", args.out)

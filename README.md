@@ -35,12 +35,14 @@ Categorie rilevate in `bigids.json`:
 | File | Scopo |
 | --- | --- |
 | `fetch_bigids.py` | Scopre Xbox Browse, fonti legacy e Store; genera `bigids.json` |
-| `fetch_xbox_og.py` | Interroga Display Catalog API e genera `games.json` + `index.html` |
-| `html_builder.py` | Genera l'interfaccia HTML statica |
+| `fetch_xbox_og.py` | Interroga Display Catalog API e genera `games.json`, `data/games-*.json` e `index.html` |
+| `html_builder.py` | Genera la shell HTML e gli shard JSON del catalogo |
 | `scraper_utils.py` | Utility condivise per HTTP, SSL, retry/backoff e MS-CV |
 | `bigids.json` | Elenco BigId per categoria |
-| `games.json` | Dati normalizzati dei giochi |
-| `index.html` | Interfaccia statica pubblicabile su GitHub Pages |
+| `games.json` | Dati normalizzati dei giochi, usati dallo scraper |
+| `data/games-*.json` | Stessi giochi spezzati in shard caricati dalla pagina |
+| `index.html` | Shell statica pubblicata su GitHub Pages |
+| `CNAME` | Dominio custom `scraper.byluke.org` |
 | `Analisi_Tecnica_Estrazione_Giochi_Xbox.md` | Note tecniche e roadmap |
 
 ## Requisiti
@@ -124,7 +126,9 @@ Le chiavi dipendono dal bundle Xbox e sono salvate in `bigids.json`.
 
 ## Output HTML
 
-`index.html` e autosufficiente e include:
+`index.html` è la shell (ricerca, filtri, statistiche). I giochi non sono inline: lo scraper li scrive anche in `data/games-*.json` e la pagina li carica a gruppi. `games.json` resta il file unico usato dal confronto dello scrape.
+
+La shell include:
 
 - ricerca per titolo;
 - filtro per console/categoria sorgente;
@@ -133,7 +137,8 @@ Le chiavi dipendono dal bundle Xbox e sono salvate in `bigids.json`.
 - ordinamento per nome, prezzo e console;
 - statistiche distinte per giochi gratuiti e prezzo non disponibile;
 - card interamente cliccabili verso lo store Xbox;
-- badge/filtro in 10 colonne su desktop e in colonna singola su telefono.
+- badge/filtro in 10 colonne su desktop, due colonne sotto i 900px e una colonna sotto i 600px;
+- path relativi alla pagina, senza prefisso `/xbox-scraper/`, così il sito funziona sia su `https://scraper.byluke.org/` sia sul project site.
 
 ## Automazioni GitHub
 
@@ -141,8 +146,8 @@ Le chiavi dipendono dal bundle Xbox e sono salvate in `bigids.json`.
 | --- | --- | --- |
 | `.github/workflows/ci.yml` | push/PR | Compilazione sintattica Python |
 | `.github/workflows/verify.yml` | giornaliera + manuale | Health check su codice, Browse endpoint, discovery legacy e API Display Catalog; soglie configurabili nel run manuale |
-| `.github/workflows/scrape.yml` | settimanale + manuale | Aggiorna `bigids.json`, `games.json` e `index.html`, poi committa se cambiano; carica un artifact `scrape-report.json` con aggiunte/rimozioni |
-| `.github/workflows/pages.yml` | push su `master` | Pubblica GitHub Pages quando cambiano `index.html` o `games.json` |
+| `.github/workflows/scrape.yml` | settimanale + manuale | Aggiorna `bigids.json`, `games.json`, `data/games-*.json` e `index.html`, poi committa se cambiano; carica un artifact `scrape-report.json` con aggiunte/rimozioni |
+| `.github/workflows/pages.yml` | push su `master` | Pubblica la root del repo su GitHub Pages (include `CNAME`) quando cambiano `index.html`, `games.json` o `data/` |
 
 ## Verifiche locali
 
@@ -186,7 +191,7 @@ python3 fetch_xbox_og.py \
 ## Note operative
 
 - `failed_ids.json` viene creato solo se alcuni batch falliscono ed e ignorato da Git.
-- `--resume` ritenta gli ID salvati in `failed_ids.json`.
+- `--resume` ritenta gli ID salvati in `failed_ids.json` e li unisce al `games.json` esistente.
 - `--no-verify-ssl` serve solo come fallback diagnostico.
 - `--filter-market` richiede una mappa URL legacy con suffissi `<exc>`; se la copertura e parziale, lo script lo segnala nei log.
 - `--batch` accetta valori da 1 a 50; `--workers` accetta valori da 1 a 10.

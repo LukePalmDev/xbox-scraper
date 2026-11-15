@@ -21,8 +21,10 @@ import re
 import argparse
 import sys
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
+import catalog_diff
 from html_builder import build_html, write_game_shards
 
 from scraper_utils import (
@@ -633,17 +635,48 @@ def main():
     if existing_games:
         games = merge_games(existing_games, games)
 
-    # Output JSON
+    # Output JSON. Il catalogo precedente serve solo allo scrape completo:
+    # una categoria parziale non deve finire nel changelog come migliaia di rimossi.
+    out_path = Path(args.out)
+    data_dir = out_path.parent / "data"
+    previous_games = catalog_diff.load_games_file(Path(json_out)) if category_key == "all" else None
     Path(json_out).write_text(
         json.dumps(games, indent=None, ensure_ascii=False),
         encoding="utf-8",
     )
     log.info("Dati JSON salvati in: %s", json_out)
 
+    if category_key == "all":
+        published = catalog_diff.publish_snapshot(
+            previous_games,
+            games,
+            data_dir,
+            when=datetime.now(timezone.utc),
+        )
+        if published is None:
+            log.info("Changelog novità invariato: catalogo precedente assente o illeggibile")
+        elif catalog_diff.is_empty(published):
+            log.info("Changelog novità: nessuna variazione di catalogo")
+        else:
+            log.info(
+                "Changelog novità: +%d -%d, %d ribassi, %d rialzi",
+                len(published["added"]),
+                len(published["removed"]),
+                len(published["price_down"]),
+                len(published["price_up"]),
+            )
+
     # Shell HTML + shard JSON accanto alla pagina (niente catalogo inline).
-    out_path = Path(args.out)
-    shard_paths = write_game_shards(games, out_path.parent / "data")
-    output = build_html(games, args.market, cat_label, shard_paths)
+    shard_paths = write_game_shards(games, data_dir)
+    root = Path(__file__).resolve().parent
+    output = build_html(
+        games,
+        args.market,
+        cat_label,
+        shard_paths,
+        changes_href=catalog_diff.versioned_href(data_dir / "changes.json", "data/changes.json"),
+        novita_src=catalog_diff.versioned_href(root / "assets" / "novita.js", "assets/novita.js"),
+    )
     out_path.write_text(output, encoding="utf-8")
 
     log.info("Completato: %d giochi, %d errori, %d missing", len(games), len(failed), len(missing))

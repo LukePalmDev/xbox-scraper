@@ -18,6 +18,15 @@ def slugify(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
 
 
+def _embed_json(value) -> str:
+    return (
+        json.dumps(value, ensure_ascii=False)
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+    )
+
+
 def write_game_shards(
     games: list[dict],
     directory: Path,
@@ -415,7 +424,14 @@ function pumpRest() {
   launch();
 }
 
+function catalogVisible() {
+  var view = document.getElementById("catalog-view");
+  return !view || !view.hidden;
+}
+
 function startRest() {
+  // Scorrere la vista Novità non deve scaricare il resto del catalogo.
+  if (!catalogVisible()) return;
   if (restStarted || loadFailed || !SHARDS.length || initialCount >= SHARDS.length) return;
   restStarted = true;
   updateLoadStatus();
@@ -490,7 +506,103 @@ window.addEventListener("scroll", function () {
   if (window.scrollY > 0) startRest();
 }, {passive: true});
 
-loadCatalog();
+var catalogStarted = false;
+function ensureCatalog() {
+  if (catalogStarted) return;
+  catalogStarted = true;
+  loadCatalog();
+}
+
+var novitaBooted = false;
+function isNovitaView() {
+  var view = "";
+  try { view = String(new URLSearchParams(window.location.search).get("view") || ""); }
+  catch (error) { view = ""; }
+  view = view.toLowerCase();
+  if (view === "novita" || view === "novità") return true;
+  var hash = window.location.hash || "";
+  try { hash = decodeURIComponent(hash); } catch (error) { /* hash grezzo */ }
+  hash = hash.replace(/^#/, "").toLowerCase();
+  return hash === "novita" || hash === "novità";
+}
+
+function rememberView(novita) {
+  var url = new URL(window.location.href);
+  if (novita) url.hash = "novita";
+  else if (/^#novit/i.test(url.hash)) url.hash = "";
+  if (url.searchParams.has("view")) url.searchParams.delete("view");
+  var next = url.pathname + url.search + url.hash;
+  var current = window.location.pathname + window.location.search + window.location.hash;
+  if (next !== current) history.pushState(null, "", next);
+}
+
+function failNovita(text) {
+  var el = document.getElementById("novita-status");
+  if (el) el.textContent = text || "";
+}
+
+function bootNovita() {
+  if (window.XboxNovita) return;
+  if (novitaBooted) return;
+  novitaBooted = true;
+  var src = "";
+  try { src = JSON.parse(document.getElementById("novita-script").textContent); }
+  catch (error) { src = ""; }
+  if (!src) {
+    failNovita("Impossibile caricare la vista Novità.");
+    return;
+  }
+  var script = document.createElement("script");
+  script.src = src;
+  script.onload = function () {
+    if (!window.XboxNovita) {
+      failNovita("Impossibile caricare la vista Novità.");
+      return;
+    }
+    var manifest = "data/changes.json";
+    try { manifest = JSON.parse(document.getElementById("changes-manifest").textContent); }
+    catch (error) { /* manifest di default */ }
+    window.XboxNovita.start(manifest);
+  };
+  script.onerror = function () {
+    failNovita("Impossibile caricare la vista Novità.");
+  };
+  document.body.appendChild(script);
+}
+
+function setView(name, updateHistory) {
+  var novita = name === "novita";
+  var catalog = document.getElementById("catalog-view");
+  var panel = document.getElementById("novita");
+  if (catalog) catalog.hidden = novita;
+  if (panel) panel.hidden = !novita;
+  var tabCatalog = document.getElementById("tab-catalogo");
+  var tabNovita = document.getElementById("tab-novita");
+  if (tabCatalog) {
+    tabCatalog.classList.toggle("active", !novita);
+    tabCatalog.setAttribute("aria-selected", novita ? "false" : "true");
+  }
+  if (tabNovita) {
+    tabNovita.classList.toggle("active", novita);
+    tabNovita.setAttribute("aria-selected", novita ? "true" : "false");
+  }
+  if (novita) bootNovita();
+  else ensureCatalog();
+  if (updateHistory) rememberView(novita);
+}
+
+var tabCatalogo = document.getElementById("tab-catalogo");
+var tabNovita = document.getElementById("tab-novita");
+if (tabCatalogo) tabCatalogo.addEventListener("click", function () { setView("catalogo", true); });
+if (tabNovita) tabNovita.addEventListener("click", function () { setView("novita", true); });
+window.addEventListener("hashchange", function () {
+  setView(isNovitaView() ? "novita" : "catalogo", false);
+});
+window.addEventListener("popstate", function () {
+  setView(isNovitaView() ? "novita" : "catalogo", false);
+});
+
+setView(isNovitaView() ? "novita" : "catalogo", false);
 """
 
 
@@ -499,6 +611,8 @@ def build_html(
     market: str,
     category_label: str,
     shard_paths: list[str] | None = None,
+    changes_href: str | None = None,
+    novita_src: str | None = None,
 ) -> str:
     if shard_paths is None:
         shard_count = (len(games) + SHARD_SIZE - 1) // SHARD_SIZE if games else 0
@@ -520,12 +634,9 @@ def build_html(
     total = len(games)
     safe_market = html_escape.escape(market)
     safe_label = html_escape.escape(category_label)
-    shards_json = (
-        json.dumps(shard_paths, ensure_ascii=False)
-        .replace("<", "\\u003c")
-        .replace(">", "\\u003e")
-        .replace("&", "\\u0026")
-    )
+    shards_json = _embed_json(shard_paths)
+    changes_json = _embed_json(changes_href or "data/changes.json")
+    novita_json = _embed_json(novita_src or "assets/novita.js")
 
     return f"""<!DOCTYPE html>
 <html lang="it">
@@ -578,7 +689,31 @@ def build_html(
   .pill {{ width:100%; min-height:28px; background:var(--pill-bg); border:1px solid var(--border); color:var(--muted); padding:4px 8px; font-family:var(--mono); font-size:.62rem; cursor:pointer; transition:all .15s; overflow-wrap:anywhere; }}
   .pill:hover {{ border-color:var(--green-dim); color:var(--text); }}
   .pill.active {{ background:var(--green-dim); border-color:var(--green); color:var(--dark); font-weight:600; }}
-  .pill:focus-visible, .search-wrap input:focus-visible, select:focus-visible {{ outline:2px solid var(--green); outline-offset:2px; }}
+  .pill:focus-visible, .view-tab:focus-visible, .search-wrap input:focus-visible, select:focus-visible {{ outline:2px solid var(--green); outline-offset:2px; }}
+  .header-tools {{ display:flex; align-items:center; justify-content:flex-end; gap:16px; flex-wrap:wrap; }}
+  .view-nav {{ display:flex; gap:6px; }}
+  .view-tab {{ min-height:36px; background:var(--pill-bg); border:1px solid var(--border); color:var(--muted); padding:6px 14px; font-family:var(--mono); font-size:.78rem; cursor:pointer; }}
+  .view-tab.active {{ background:var(--green-dim); border-color:var(--green); color:var(--dark); font-weight:600; }}
+  .novita-head {{ position:relative; z-index:1; padding:18px 40px 0; }}
+  .novita-title {{ font-size:1.4rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }}
+  .novita-title span {{ color:var(--green); }}
+  .novita-lead, .novita-when, .novita-counts, .novita-note {{ font-family:var(--mono); color:var(--muted); }}
+  .novita-lead {{ font-size:.75rem; margin-top:4px; }}
+  .novita-when {{ color:var(--green); font-size:.8rem; margin-top:8px; }}
+  .novita-counts {{ font-size:.75rem; }}
+  .novita-note {{ font-size:.72rem; padding:0 40px 12px; position:relative; z-index:1; }}
+  .pill-grid.novita-pills {{ grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); }}
+  .snapshot-label {{ font-family:var(--mono); font-size:.65rem; color:var(--muted); letter-spacing:.1em; }}
+  .change-list {{ position:relative; z-index:1; padding:8px 40px 24px; display:flex; flex-direction:column; gap:8px; }}
+  .change-row {{ display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:10px 12px; align-items:center; background:var(--panel); border:1px solid var(--border); color:var(--text); text-decoration:none; padding:10px 12px; }}
+  .change-row:hover {{ border-color:var(--green-dim); }}
+  .change-row:focus-visible {{ outline:2px solid var(--green); outline-offset:2px; }}
+  .change-kind {{ font-family:var(--mono); font-size:.62rem; padding:3px 6px; border:1px solid var(--green-dim); color:var(--green); white-space:nowrap; }}
+  .change-kind.removed {{ color:#ff8a80; border-color:#ff8a80; }}
+  .change-kind.up {{ color:#ffd54f; border-color:#ffd54f; }}
+  .change-title {{ font-weight:600; overflow-wrap:anywhere; }}
+  .change-price {{ font-family:var(--mono); font-size:.75rem; color:var(--green); text-align:right; }}
+  .change-price .was {{ color:var(--muted); text-decoration:line-through; margin-right:6px; }}
   .load-status {{ position:relative; z-index:1; padding:8px 40px 0; font-family:var(--mono); font-size:.75rem; color:var(--green); overflow-wrap:anywhere; }}
   .load-status:empty {{ display:none; }}
   .no-results {{ display:none; position:relative; z-index:1; padding:28px 40px; text-align:center; font-family:var(--mono); color:var(--muted); overflow-wrap:anywhere; }}
@@ -603,8 +738,8 @@ def build_html(
   .stat-num {{ font-family:var(--mono); font-size:1.1rem; color:var(--green); font-weight:700; }}
   .stat-lbl {{ font-family:var(--mono); font-size:.55rem; color:var(--muted); letter-spacing:.05em; margin-top:2px; overflow-wrap:anywhere; }}
   .more-wrap {{ position:relative; z-index:1; display:flex; justify-content:center; padding:0 40px 48px; }}
-  #more {{ min-height:44px; padding:10px 18px; background:var(--green-dim); border:1px solid var(--green); color:var(--dark); font-family:var(--mono); font-size:.8rem; font-weight:600; cursor:pointer; max-width:100%; }}
-  #more:focus-visible {{ outline:2px solid var(--green); outline-offset:2px; }}
+  #more, #novita-more {{ min-height:44px; padding:10px 18px; background:var(--green-dim); border:1px solid var(--green); color:var(--dark); font-family:var(--mono); font-size:.8rem; font-weight:600; cursor:pointer; max-width:100%; }}
+  #more:focus-visible, #novita-more:focus-visible {{ outline:2px solid var(--green); outline-offset:2px; }}
   [hidden] {{ display:none !important; }}
   @media (min-width:601px) {{
     .filter-details > summary {{ display:none; }}
@@ -615,9 +750,14 @@ def build_html(
   }}
   @media (max-width:600px) {{
     .stats-bar {{ padding-left:max(16px, env(safe-area-inset-left)); padding-right:max(16px, env(safe-area-inset-right)); }}
-    header,.controls,.game-grid,.load-status,.no-results,.more-wrap {{ padding-left:max(16px, env(safe-area-inset-left)); padding-right:max(16px, env(safe-area-inset-right)); }}
+    header,.controls,.game-grid,.load-status,.no-results,.more-wrap,.novita-head,.change-list,.novita-note {{ padding-left:max(16px, env(safe-area-inset-left)); padding-right:max(16px, env(safe-area-inset-right)); }}
     h1 {{ font-size:1.4rem; }}
+    .header-tools,.view-nav {{ width:100%; }}
+    .view-tab {{ flex:1; min-height:44px; font-size:16px; }}
     .game-grid {{ grid-template-columns:repeat(auto-fill,minmax(min(100%,150px),1fr)); }}
+    .change-row {{ grid-template-columns:1fr; justify-items:start; }}
+    .change-price {{ text-align:left; }}
+    .pill-grid.novita-pills {{ grid-template-columns:1fr; }}
     .filter-row {{ flex-direction:column; align-items:stretch; }}
     .filter-label {{ display:none; }}
     .pill-grid {{ grid-template-columns:1fr; }}
@@ -641,8 +781,15 @@ def build_html(
       <div class="sub">{safe_label.upper()} &middot; {safe_market}</div>
     </div>
   </div>
-  <div class="count"><span id="vis-count">0</span> / <span id="total-count">{total}</span> giochi</div>
+  <div class="header-tools">
+    <div class="view-nav" role="tablist" aria-label="Sezioni">
+      <button type="button" class="view-tab active" id="tab-catalogo" role="tab" aria-selected="true" aria-controls="catalog-view">Catalogo</button>
+      <button type="button" class="view-tab" id="tab-novita" role="tab" aria-selected="false" aria-controls="novita">Novità</button>
+    </div>
+    <div class="count"><span id="vis-count">0</span> / <span id="total-count">{total}</span> giochi</div>
+  </div>
 </header>
+<div id="catalog-view" role="tabpanel" aria-labelledby="tab-catalogo">
 {stats_html}
 <div class="controls">
   <div class="ctrl-row">
@@ -681,7 +828,34 @@ def build_html(
 <div class="more-wrap"><button type="button" id="more" hidden>Mostra altri</button></div>
 <noscript><p class="no-results" style="display:block">Attiva JavaScript per sfogliare il catalogo. I dati restano nei file data/games-*.json.</p></noscript>
 </main>
+</div>
+<section id="novita" role="tabpanel" aria-labelledby="tab-novita" hidden>
+  <div class="novita-head">
+    <h2 class="novita-title"><span>Novità</span></h2>
+    <p class="novita-lead">Aggiunte, rimozioni e variazioni di prezzo tra uno snapshot e il precedente.</p>
+    <p id="novita-when" class="novita-when"></p>
+  </div>
+  <div class="controls">
+    <div class="ctrl-row">
+      <label class="snapshot-label" for="novita-snapshot">SNAPSHOT</label>
+      <select id="novita-snapshot" aria-label="Scegli lo snapshot"></select>
+    </div>
+    <div class="pill-grid novita-pills" role="group" aria-label="Tipo di novità">
+      <button type="button" class="pill active" data-change="all" aria-pressed="true">Tutti</button>
+      <button type="button" class="pill" data-change="added" aria-pressed="false">Nuovi</button>
+      <button type="button" class="pill" data-change="removed" aria-pressed="false">Rimossi</button>
+      <button type="button" class="pill" data-change="price_down" aria-pressed="false">Prezzo giù</button>
+      <button type="button" class="pill" data-change="price_up" aria-pressed="false">Prezzo su</button>
+    </div>
+    <p id="novita-counts" class="novita-counts" aria-live="polite"></p>
+  </div>
+  <p id="novita-status" class="load-status" role="status" aria-live="polite"></p>
+  <div id="novita-list" class="change-list" role="list" aria-label="Novità del catalogo"></div>
+  <div class="more-wrap"><button type="button" id="novita-more" hidden>Mostra altri</button></div>
+</section>
 <script type="application/json" id="shard-manifest">{shards_json}</script>
+<script type="application/json" id="changes-manifest">{changes_json}</script>
+<script type="application/json" id="novita-script">{novita_json}</script>
 <script>
 {_PAGE_JS}
 </script>

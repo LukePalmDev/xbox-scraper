@@ -3,12 +3,15 @@ import base64
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
 
+import catalog_diff
 import fetch_bigids
 import fetch_xbox_og
 import html_builder
@@ -332,6 +335,20 @@ class HtmlBuilderTests(unittest.TestCase):
         self.assertNotIn("/xbox-scraper/", html)
         self.assertNotIn("Armed and Dangerous", html)
         self.assertIn("data/games-000.json", html)
+        self.assertIn('id="tab-novita"', html)
+        self.assertIn(">Novità</span>", html)
+        self.assertIn("Prezzo giù", html)
+        self.assertIn("Prezzo su", html)
+        self.assertIn("function bootNovita()", html)
+        self.assertIn("function isNovitaView()", html)
+        self.assertIn('url.hash = "novita"', html)
+        self.assertIn('.get("view")', html)
+        self.assertIn("if (!catalogVisible()) return;", html)
+        self.assertNotIn("<script src=", html)
+        changes = json.loads(re.search(r'id="changes-manifest">(.*?)</script>', html).group(1))
+        novita = json.loads(re.search(r'id="novita-script">(.*?)</script>', html).group(1))
+        self.assertEqual(changes, "data/changes.json")
+        self.assertEqual(novita, "assets/novita.js")
         self.assertLess(len(html.encode("utf-8")), 200_000)
 
     def test_write_game_shards_preserves_every_field(self):
@@ -386,7 +403,11 @@ class HtmlBuilderTests(unittest.TestCase):
         self.assertIn("INITIAL_SHARDS = 2", html)
         self.assertIn("function startRest()", html)
         self.assertIn('id="load-status"', html)
+        self.assertIn('id="tab-novita"', html)
         self.assertNotIn("Math.min(4", html)
+        changes = json.loads(re.search(r'id="changes-manifest">(.*?)</script>', html).group(1))
+        self.assertTrue(changes.startswith("data/changes.json"))
+        self.assertNotIn('"added"', changes)
 
     def test_shell_lazy_loads_two_shards_and_exposes_social_metadata(self):
         html = html_builder.build_html([self._game(), self._game(id="ZZZZZZZZZZZZ", title="Zulu")], "IT", "Xbox Original (OG)")
@@ -418,6 +439,11 @@ class HtmlBuilderTests(unittest.TestCase):
         self.assertGreaterEqual(len(shards), 3)
         initial = html_size + image_size + shards[0].stat().st_size + shards[1].stat().st_size
         self.assertLess(initial, 3_000_000)
+        html = Path("index.html").read_text(encoding="utf-8")
+        changes = json.loads(re.search(r'id="changes-manifest">(.*?)</script>', html).group(1))
+        self.assertTrue(str(changes).startswith("data/changes.json"))
+        self.assertLess(len(str(changes)), 80)
+        self.assertNotIn('src="assets/novita.js', html)
 
 
 class PagesWorkflowTests(unittest.TestCase):
@@ -460,6 +486,12 @@ class PagesWorkflowTests(unittest.TestCase):
         self.assertIn("path: _site", text)
         self.assertNotIn('path: "."', text)
         self.assertIn("gitleaks/gitleaks-action@v2", Path(".github/workflows/gitleaks.yml").read_text(encoding="utf-8"))
+        ci = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn("catalog_diff.py", ci)
+        scrape = Path(".github/workflows/scrape.yml").read_text(encoding="utf-8")
+        self.assertIn("catalog_diff.py report", scrape)
+        self.assertIn("PRICE_DOWN", scrape)
+        self.assertNotIn("games_old.json", scrape)
 
         match = re.search(r"- name: Assemble site\n\s+run: \|\n(?P<body>(?:[ \t]+.+\n)+)", text)
         self.assertIsNotNone(match)
@@ -484,6 +516,9 @@ class PagesWorkflowTests(unittest.TestCase):
             self.assertTrue((site / "index.html").is_file())
             self.assertTrue((site / "CNAME").is_file())
             self.assertTrue((site / "data" / "games-000.json").is_file())
+            self.assertTrue((site / "data" / "changes.json").is_file())
+            self.assertTrue(any((site / "data" / "changes").glob("*.json")))
+            self.assertTrue((site / "assets" / "novita.js").is_file())
             self.assertTrue((site / "assets" / "og-image.png").is_file())
             self.assertTrue((site / ".nojekyll").is_file())
             self.assertFalse((site / ".claude" / "launch.json").exists())
@@ -523,6 +558,232 @@ class CliValidationTests(unittest.TestCase):
     def test_select_category_eof_uses_all(self):
         with patch("builtins.input", side_effect=EOFError), patch("sys.stdout"):
             self.assertEqual(fetch_xbox_og.select_category_interactive("bigids.json"), "all")
+
+
+class CatalogDiffTests(unittest.TestCase):
+    def _paid(self, gid, title, price, **extra):
+        game = {
+            "id": gid,
+            "title": title,
+            "price": f"{price:.2f} EUR",
+            "price_num": price,
+            "price_status": "paid",
+            "url": f"https://www.xbox.com/games/store/-/{gid}",
+        }
+        game.update(extra)
+        return game
+
+    def test_diff_added_removed_price_changes_and_unchanged(self):
+        old = [
+            self._paid("KEEP", "Stesso", 10),
+            self._paid("DOWN", "Ribasso piccolo", 10),
+            self._paid("BIG", "Ribasso grande", 30),
+            self._paid("UP", "Rialzo", 5),
+            self._paid("FREE", "Diventa gratis", 12),
+            self._paid("GONE", "Sparito", 7.5),
+            self._paid("DUP", "Prima", 10),
+            {"title": "senza id"},
+            None,
+        ]
+        new = [
+            self._paid("KEEP", "Stesso", 10.0),
+            self._paid("DOWN", "Ribasso piccolo", 9),
+            self._paid("BIG", "Ribasso grande", 4),
+            self._paid("UP", "Rialzo", 8),
+            {
+                "id": "FREE",
+                "title": "Diventa gratis",
+                "price": "Gratis",
+                "price_num": 0,
+                "price_status": "free",
+                "url": "https://www.xbox.com/games/store/-/FREE",
+            },
+            self._paid("NEW", "Appena uscito", 19.99),
+            self._paid("DUP", "Prima", 10),
+            self._paid("DUP", "Dopo", 3),
+        ]
+
+        diff = catalog_diff.diff_catalogs(old, new)
+
+        self.assertEqual([item["id"] for item in diff["added"]], ["NEW"])
+        self.assertEqual(diff["added"][0]["title"], "Appena uscito")
+        self.assertEqual(diff["added"][0]["price"], "19.99 EUR")
+        self.assertEqual(diff["added"][0]["url"], "https://www.xbox.com/games/store/-/NEW")
+        self.assertEqual(diff["removed"], [{
+            "id": "GONE",
+            "title": "Sparito",
+            "price": "7.50 EUR",
+            "url": "https://www.xbox.com/games/store/-/GONE",
+        }])
+        self.assertEqual([item["id"] for item in diff["price_down"]], ["BIG", "FREE", "DUP", "DOWN"])
+        self.assertEqual(diff["price_down"][0]["old"], "30.00 EUR")
+        self.assertEqual(diff["price_down"][0]["new"], "4.00 EUR")
+        self.assertEqual(diff["price_down"][1]["new"], "Gratis")
+        self.assertEqual([item["id"] for item in diff["price_up"]], ["UP"])
+        dup = next(item for item in diff["price_down"] if item["id"] == "DUP")
+        self.assertEqual(dup["title"], "Dopo")
+        self.assertEqual(dup["new"], "3.00 EUR")
+        self.assertNotIn("KEEP", [item["id"] for item in diff["added"] + diff["removed"] + diff["price_down"] + diff["price_up"]])
+        self.assertEqual(diff["added"][0].get("_delta"), None)
+
+    def test_missing_and_malformed_prices_are_not_price_changes(self):
+        old = [
+            self._paid("STR", "Stringa", 10),
+            self._paid("NONE", "Assente", 10),
+            self._paid("NAN", "Nan", 10),
+            self._paid("BOOL", "Booleano", 10),
+            self._paid("NEG", "Negativo", 10),
+            self._paid("UNK", "Ignoto", 10),
+            self._paid("NOISE", "Rumore", 19.99),
+        ]
+        new = [
+            {"id": "STR", "title": "Stringa", "price": "8.00 EUR", "price_num": "8.00", "price_status": "paid"},
+            {"id": "NONE", "title": "Assente", "price": None, "price_status": "paid"},
+            {"id": "NAN", "title": "Nan", "price_num": float("nan"), "price_status": "paid", "price": "1.00 EUR"},
+            {"id": "BOOL", "title": "Booleano", "price_num": True, "price_status": "paid", "price": "1.00 EUR"},
+            {"id": "NEG", "title": "Negativo", "price_num": -1, "price_status": "paid", "price": "1.00 EUR"},
+            {"id": "UNK", "title": "Ignoto", "price_num": 0, "price_status": "unknown", "price": None},
+            self._paid("NOISE", "Rumore", 19.9900001),
+            {"id": "ADDED", "title": "Senza prezzo"},
+        ]
+
+        diff = catalog_diff.diff_catalogs(old, new)
+
+        self.assertEqual(diff["price_down"], [])
+        self.assertEqual(diff["price_up"], [])
+        self.assertEqual([item["id"] for item in diff["added"]], ["ADDED"])
+        self.assertEqual(diff["added"][0]["price"], "N/D")
+        self.assertEqual(diff["added"][0]["url"], "https://www.xbox.com/games/store/-/ADDED")
+        self.assertEqual(diff["removed"], [])
+
+    def test_missing_baseline_does_not_mark_everything_added(self):
+        games = [self._paid("A", "Alpha", 1)]
+
+        self.assertTrue(catalog_diff.is_empty(catalog_diff.diff_catalogs(None, games)))
+        self.assertTrue(catalog_diff.is_empty(catalog_diff.diff_catalogs(games, "nope")))
+        report = catalog_diff.build_report(None, games)
+        self.assertEqual(report["added_count"], 0)
+        self.assertEqual(report["total_games"], 1)
+
+    def test_publish_rolls_thirty_snapshots_and_bounds_size(self):
+        when = datetime(2026, 11, 1, tzinfo=timezone.utc)
+        old = [self._paid(f"G{i}", "Gioco", 20) for i in range(6)]
+        new = [self._paid(f"G{i}", "X" * 80, 1) for i in range(6)]
+        diff = catalog_diff.diff_catalogs(old, new)
+        snapshot = catalog_diff.build_snapshot(diff, when)
+        bounded = catalog_diff.bound_snapshot(snapshot, max_bytes=700)
+        self.assertEqual(bounded["counts"]["price_down"], 6)
+        self.assertLess(len(bounded["price_down"]), 6)
+        self.assertLessEqual(catalog_diff._encoded_size(bounded), 700)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp)
+            base = [self._paid("A", "Alpha", 10), self._paid("B", "Beta", 10)]
+            first = catalog_diff.publish_snapshot(base, base, data, when=when)
+            self.assertTrue(catalog_diff.is_empty(first))
+            self.assertFalse((data / "changes.json").exists())
+
+            for index in range(3):
+                nxt = list(base)
+                nxt.append(self._paid(f"N{index}", f"Nuovo {index}", 4))
+                catalog_diff.publish_snapshot(
+                    base,
+                    nxt,
+                    data,
+                    when=datetime(2026, 11, index + 1, tzinfo=timezone.utc),
+                    max_snapshots=2,
+                )
+                base = nxt
+            index = json.loads((data / "changes.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(index["snapshots"]), 2)
+            self.assertEqual(index["snapshots"][0]["counts"]["added"], 1)
+            files = list((data / "changes").glob("*.json"))
+            self.assertEqual(len(files), 2)
+            newest = json.loads((data / "changes" / catalog_diff._href_name(index["snapshots"][0]["href"])).read_text(encoding="utf-8"))
+            self.assertEqual(newest["added"][0]["title"], "Nuovo 2")
+            self.assertEqual(newest["added"][0]["price"], "4.00 EUR")
+
+            catalog_diff.publish_snapshot(base, base, data, when=datetime(2026, 11, 9, tzinfo=timezone.utc))
+            again = json.loads((data / "changes.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(again["snapshots"]), 2)
+
+    def test_report_cli_writes_counts_without_a_previous_catalog(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "games.json").write_text(json.dumps([self._paid("A", "Alpha", 2)]), encoding="utf-8")
+            env_path = root / "env"
+            report_path = root / "scrape-report.json"
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(Path("catalog_diff.py").resolve()),
+                    "report",
+                    "--new",
+                    "games.json",
+                    "--previous-rev",
+                    "HEAD",
+                    "--repo",
+                    str(root),
+                    "--report",
+                    str(report_path),
+                    "--github-env",
+                    str(env_path),
+                ],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(report["added_count"], 0)
+            self.assertEqual(report["removed_count"], 0)
+            self.assertEqual(report["price_down_count"], 0)
+            self.assertEqual(report["price_up_count"], 0)
+            env = env_path.read_text(encoding="utf-8")
+            self.assertIn("ADDED=0\n", env)
+            self.assertIn("REMOVED=0\n", env)
+            self.assertIn("PRICE_DOWN=0\n", env)
+            self.assertIn("PRICE_UP=0\n", env)
+
+    def test_bootstrap_uses_git_history_and_skips_catalog_rebuilds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-b", "master"], cwd=root, check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+            games = root / "games.json"
+
+            def commit(payload, message):
+                games.write_text(json.dumps(payload), encoding="utf-8")
+                subprocess.run(["git", "add", "games.json"], cwd=root, check=True)
+                subprocess.run(["git", "commit", "-m", message], cwd=root, check=True, capture_output=True)
+
+            commit([self._paid("A", "Alpha", 10)], "base")
+            commit([self._paid("A", "Alpha", 4), self._paid("B", "Beta", 3)], "week")
+            commit(
+                [self._paid("A", "Alpha", 4), self._paid("B", "Beta", 3)]
+                + [self._paid(f"X{i}", f"Extra {i}", 1) for i in range(5)],
+                "rebuild",
+            )
+
+            count = catalog_diff.bootstrap_from_git(root, root / "data", max_snapshots=30, max_churn=2)
+
+            self.assertEqual(count, 1)
+            index = json.loads((root / "data" / "changes.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(index["snapshots"]), 1)
+            self.assertEqual(index["snapshots"][0]["counts"], {
+                "added": 1,
+                "removed": 0,
+                "price_down": 1,
+                "price_up": 0,
+            })
+            href = index["snapshots"][0]["href"]
+            snapshot = json.loads((root / href.split("?", 1)[0]).read_text(encoding="utf-8"))
+            self.assertEqual(snapshot["added"][0]["title"], "Beta")
+            self.assertEqual(snapshot["price_down"][0]["id"], "A")
+            self.assertEqual(snapshot["price_down"][0]["old"], "10.00 EUR")
+            self.assertEqual(snapshot["price_down"][0]["new"], "4.00 EUR")
+            self.assertTrue(snapshot["removed"] == [])
 
 
 if __name__ == "__main__":

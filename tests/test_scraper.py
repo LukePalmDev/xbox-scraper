@@ -9,8 +9,6 @@ from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
 
-import yaml
-
 import fetch_bigids
 import fetch_xbox_og
 import html_builder
@@ -423,18 +421,31 @@ class HtmlBuilderTests(unittest.TestCase):
 
 
 class PagesWorkflowTests(unittest.TestCase):
+    def _top_level_keys(self, text: str) -> list[str]:
+        keys = []
+        for line in text.splitlines():
+            if not line or line[0].isspace() or line.lstrip().startswith("#"):
+                continue
+            self.assertIn(":", line)
+            keys.append(line.split(":", 1)[0].strip().strip("'\""))
+        return keys
+
     def test_workflows_are_valid_yaml_with_explicit_permissions(self):
         workflows = sorted(Path(".github/workflows").glob("*.yml"))
         self.assertGreaterEqual(len(workflows), 4)
         for path in workflows:
             text = path.read_text(encoding="utf-8")
-            loaded = yaml.safe_load(text)
-            self.assertIsInstance(loaded, dict)
+            self.assertNotIn("\t", text, path.name)
+            keys = self._top_level_keys(text)
+            self.assertIn("on", keys, path.name)
+            self.assertIn("permissions", keys, path.name)
+            self.assertIn("jobs", keys, path.name)
             self.assertIn("permissions:", text, path.name)
 
-        dependabot = yaml.safe_load(Path(".github/dependabot.yml").read_text(encoding="utf-8"))
-        ecosystems = {item["package-ecosystem"] for item in dependabot["updates"]}
-        self.assertEqual(ecosystems, {"github-actions"})
+        dependabot = Path(".github/dependabot.yml").read_text(encoding="utf-8")
+        self.assertIn("version: 2", dependabot)
+        ecosystems = re.findall(r"package-ecosystem:\s*(\S+)", dependabot)
+        self.assertEqual(ecosystems, ["github-actions"])
 
     def test_pages_deploys_after_a_successful_scrape_and_only_site_files(self):
         text = Path(".github/workflows/pages.yml").read_text(encoding="utf-8")

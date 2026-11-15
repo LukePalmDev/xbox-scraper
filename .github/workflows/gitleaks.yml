@@ -1,0 +1,27 @@
+name: gitleaks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The scan reports in the job log and on the pull request.
+          # Skip the SARIF artifact so this job does not need actions: write.
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"

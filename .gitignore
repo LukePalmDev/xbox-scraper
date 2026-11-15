@@ -5,3 +5,4 @@ __pycache__/
 *.pyo
 failed_ids.json
 .claude/worktrees/
+_site/

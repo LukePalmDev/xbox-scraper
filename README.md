@@ -36,11 +36,15 @@ Categorie rilevate in `bigids.json`:
 | --- | --- |
 | `fetch_bigids.py` | Scopre Xbox Browse, fonti legacy e Store; genera `bigids.json` |
 | `fetch_xbox_og.py` | Interroga Display Catalog API e genera `games.json`, `data/games-*.json` e `index.html` |
+| `catalog_diff.py` | Diff tra due cataloghi e changelog Novità in `data/changes.json` |
 | `html_builder.py` | Genera la shell HTML e gli shard JSON del catalogo |
 | `scraper_utils.py` | Utility condivise per HTTP, SSL, retry/backoff e MS-CV |
 | `bigids.json` | Elenco BigId per categoria |
 | `games.json` | Dati normalizzati dei giochi, usati dallo scraper |
 | `data/games-*.json` | Stessi giochi spezzati in shard caricati dalla pagina |
+| `data/changes.json` | Indice degli ultimi snapshot Novità (data e conteggi) |
+| `data/changes/*.json` | Aggiunte, rimossi e variazioni di prezzo di uno snapshot |
+| `assets/novita.js` | Vista Novità, scaricata solo quando si apre la sezione |
 | `index.html` | Shell statica pubblicata su GitHub Pages |
 | `CNAME` | Dominio custom `scraper.byluke.org` |
 | `Analisi_Tecnica_Estrazione_Giochi_Xbox.md` | Note tecniche e roadmap |
@@ -126,7 +130,9 @@ Le chiavi dipendono dal bundle Xbox e sono salvate in `bigids.json`.
 
 ## Output HTML
 
-`index.html` è la shell (ricerca, filtri, statistiche). I giochi non sono inline: lo scraper li scrive anche in `data/games-*.json`. La pagina scarica i primi due shard all'apertura e gli altri in background quando si scorre o si cerca; a caricamento finito ricerca e filtri coprono il catalogo intero. `games.json` resta il file unico usato dal confronto dello scrape e non viene pubblicato.
+`index.html` è la shell (ricerca, filtri, statistiche, sezione Novità). I giochi non sono inline: lo scraper li scrive anche in `data/games-*.json`. La pagina scarica i primi due shard all'apertura del catalogo e gli altri in background quando si scorre o si cerca; a caricamento finito ricerca e filtri coprono il catalogo intero. `games.json` resta il file unico usato dal confronto dello scrape e non viene pubblicato.
+
+La sezione Novità (`#novita` o `?view=novita`) confronta uno snapshot con il precedente: nuovi, rimossi, prezzo giù e prezzo su, con data dello snapshot e link allo Store. `data/changes.json` e `assets/novita.js` si scaricano solo aprendo quella sezione. Lo scrape completo aggiorna il changelog prima di rigenerare la shell; si tengono gli ultimi 30 snapshot.
 
 La shell include:
 
@@ -146,8 +152,8 @@ La shell include:
 | --- | --- | --- |
 | `.github/workflows/ci.yml` | push/PR | Compilazione sintattica Python |
 | `.github/workflows/verify.yml` | giornaliera + manuale | Health check su codice, Browse endpoint, discovery legacy e API Display Catalog; soglie configurabili nel run manuale |
-| `.github/workflows/scrape.yml` | settimanale + manuale | Aggiorna `bigids.json`, `games.json`, `data/games-*.json` e `index.html`, poi committa se cambiano; carica un artifact `scrape-report.json` con aggiunte/rimozioni |
-| `.github/workflows/pages.yml` | push su `master`, fine di Scrape Xbox Catalog, manuale | Pubblica su GitHub Pages solo `index.html`, `data/`, `assets/` e `CNAME`. Dopo lo scrape il deploy parte solo se il workflow è riuscito |
+| `.github/workflows/scrape.yml` | settimanale + manuale | Aggiorna `bigids.json`, `games.json`, `data/games-*.json`, `data/changes.json` e `index.html`, poi committa se cambiano; carica un artifact `scrape-report.json` con aggiunte, rimozioni e conteggi di prezzo |
+| `.github/workflows/pages.yml` | push su `master`, fine di Scrape Xbox Catalog, manuale | Pubblica su GitHub Pages solo `index.html`, `data/` (catalogo e changelog), `assets/` e `CNAME`. Dopo lo scrape il deploy parte solo se il workflow è riuscito |
 | `.github/workflows/gitleaks.yml` | push, PR, manuale | Scansiona la cronologia in cerca di segreti |
 | `.github/dependabot.yml` | settimanale | Aggiorna le GitHub Actions usate dai workflow |
 
@@ -156,7 +162,7 @@ La shell include:
 Controllo sintassi:
 
 ```bash
-python3 -m py_compile fetch_bigids.py fetch_xbox_og.py html_builder.py scraper_utils.py
+python3 -m py_compile fetch_bigids.py fetch_xbox_og.py html_builder.py scraper_utils.py catalog_diff.py
 ```
 
 Test unitari offline:

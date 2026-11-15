@@ -1,7 +1,8 @@
 """Generazione HTML statica per il catalogo Xbox.
 
-`index.html` è solo la shell. I giochi stanno in `data/games-NNN.json` e
-vengono caricati dal browser, così la pagina non include più tutto il catalogo.
+`index.html` è solo la shell. I giochi stanno in `data/games-NNN.json`.
+Il browser scarica i primi due shard all'apertura e gli altri in background
+quando si scorre o si cerca, così la pagina non include più tutto il catalogo.
 """
 
 import hashlib
@@ -115,6 +116,8 @@ var debounceTimer = 0;
 var refreshTimer = 0;
 var booted = false;
 var lastKey = "";
+var INITIAL_SHARDS = 2;
+var BACKGROUND_CONCURRENCY = 2;
 
 function slugify(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -349,6 +352,76 @@ function commit(buffers, state) {
   }
 }
 
+var catalogBuffers = [];
+var catalogState = {next: 0};
+var loadedCount = 0;
+var initialCount = 0;
+var restStarted = false;
+var loadFailed = false;
+
+function progressLabel() {
+  return "Caricamento catalogo " + loadedCount + "/" + SHARDS.length;
+}
+
+function updateLoadStatus() {
+  if (loadFailed) return;
+  if (loadedCount >= SHARDS.length) {
+    clearTimeout(refreshTimer);
+    loading = false;
+    setStatus("");
+    applyFilters(false);
+    return;
+  }
+  if (!restStarted && initialCount > 0 && loadedCount >= initialCount) {
+    clearTimeout(refreshTimer);
+    applyFilters(false);
+    setStatus(progressLabel() + ". Scorri o cerca per il resto");
+    return;
+  }
+  setStatus(progressLabel());
+}
+
+async function pullShard(index) {
+  await fetchShard(index, catalogBuffers);
+  loadedCount += 1;
+  commit(catalogBuffers, catalogState);
+  updateLoadStatus();
+}
+
+function failLoad(error) {
+  if (loadFailed) return;
+  loadFailed = true;
+  clearTimeout(refreshTimer);
+  loading = false;
+  setStatus("");
+  showError("Una parte del catalogo non si è caricata. Ricarica la pagina. (" + error.message + ")");
+  applyFilters(false);
+}
+
+function pumpRest() {
+  var running = 0;
+  var nextIndex = initialCount;
+  function launch() {
+    if (loadFailed) return;
+    while (running < BACKGROUND_CONCURRENCY && nextIndex < SHARDS.length) {
+      var index = nextIndex++;
+      running += 1;
+      pullShard(index).then(function () {
+        running -= 1;
+        launch();
+      }).catch(failLoad);
+    }
+  }
+  launch();
+}
+
+function startRest() {
+  if (restStarted || loadFailed || !SHARDS.length || initialCount >= SHARDS.length) return;
+  restStarted = true;
+  updateLoadStatus();
+  pumpRest();
+}
+
 async function loadCatalog() {
   if (!SHARDS.length) {
     loading = false;
@@ -356,45 +429,22 @@ async function loadCatalog() {
     applyFilters(true);
     return;
   }
-  var buffers = new Array(SHARDS.length);
-  var state = {next: 0};
-  var loaded = 0;
-  setStatus("Caricamento catalogo 0/" + SHARDS.length);
-  async function pull(index) {
-    await fetchShard(index, buffers);
-    loaded += 1;
-    setStatus("Caricamento catalogo " + loaded + "/" + SHARDS.length);
-    commit(buffers, state);
-  }
+  catalogBuffers = new Array(SHARDS.length);
+  initialCount = Math.min(INITIAL_SHARDS, SHARDS.length);
+  setStatus(progressLabel());
+  var pending = [];
+  for (var i = 0; i < initialCount; i++) pending.push(pullShard(i));
   try {
-    await pull(0);
-    var nextIndex = 1;
-    async function worker() {
-      while (nextIndex < SHARDS.length) {
-        var index = nextIndex++;
-        await pull(index);
-      }
-    }
-    var workers = [];
-    var pool = Math.min(4, Math.max(0, SHARDS.length - 1));
-    for (var w = 0; w < pool; w++) workers.push(worker());
-    await Promise.all(workers);
-    clearTimeout(refreshTimer);
-    loading = false;
-    setStatus("");
-    applyFilters(false);
+    await Promise.all(pending);
   } catch (error) {
-    clearTimeout(refreshTimer);
-    loading = false;
-    setStatus("");
-    showError("Una parte del catalogo non si è caricata. Ricarica la pagina. (" + error.message + ")");
-    applyFilters(false);
+    failLoad(error);
   }
 }
 
 document.querySelector(".controls").addEventListener("click", function (event) {
   var pill = event.target.closest(".pill");
   if (!pill) return;
+  startRest();
   var type = pill.hasAttribute("data-filter-cat") ? "cat" : "genre";
   var value = pill.getAttribute("data-filter-" + type);
   var group = document.querySelectorAll("[data-filter-" + type + "]");
@@ -410,10 +460,14 @@ document.querySelector(".controls").addEventListener("click", function (event) {
 });
 
 document.getElementById("search").addEventListener("input", function () {
+  startRest();
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(function () { applyFilters(true); }, 200);
 });
-document.getElementById("sort").addEventListener("change", function () { applyFilters(true); });
+document.getElementById("sort").addEventListener("change", function () {
+  startRest();
+  applyFilters(true);
+});
 
 if (!window.matchMedia("(max-width: 600px)").matches) {
   var filterBlocks = document.querySelectorAll(".filter-details");
@@ -421,13 +475,20 @@ if (!window.matchMedia("(max-width: 600px)").matches) {
 }
 
 var moreButton = document.getElementById("more");
-moreButton.addEventListener("click", showMore);
+moreButton.addEventListener("click", function () {
+  startRest();
+  showMore();
+});
 if ("IntersectionObserver" in window) {
   var observer = new IntersectionObserver(function (entries) {
     if (entries.some(function (entry) { return entry.isIntersecting; })) showMore();
   }, {rootMargin: "200px"});
   observer.observe(moreButton);
 }
+
+window.addEventListener("scroll", function () {
+  if (window.scrollY > 0) startRest();
+}, {passive: true});
 
 loadCatalog();
 """
@@ -472,6 +533,11 @@ def build_html(
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="Catalogo navigabile dei giochi Xbox per il mercato {safe_market}.">
+<meta property="og:title" content="Xbox — {total} giochi ({safe_label} · {safe_market})">
+<meta property="og:description" content="Catalogo navigabile dei giochi Xbox per il mercato {safe_market}.">
+<meta property="og:image" content="https://scraper.byluke.org/assets/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
 <title>Xbox — {total} giochi ({safe_label} · {safe_market})</title>
 <link rel="canonical" href="https://scraper.byluke.org/">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%2300e676'/%3E%3C/svg%3E">
@@ -513,7 +579,7 @@ def build_html(
   .pill:hover {{ border-color:var(--green-dim); color:var(--text); }}
   .pill.active {{ background:var(--green-dim); border-color:var(--green); color:var(--dark); font-weight:600; }}
   .pill:focus-visible, .search-wrap input:focus-visible, select:focus-visible {{ outline:2px solid var(--green); outline-offset:2px; }}
-  .load-status {{ position:relative; z-index:1; padding:8px 40px 0; font-family:var(--mono); font-size:.75rem; color:var(--green); }}
+  .load-status {{ position:relative; z-index:1; padding:8px 40px 0; font-family:var(--mono); font-size:.75rem; color:var(--green); overflow-wrap:anywhere; }}
   .load-status:empty {{ display:none; }}
   .no-results {{ display:none; position:relative; z-index:1; padding:28px 40px; text-align:center; font-family:var(--mono); color:var(--muted); overflow-wrap:anywhere; }}
   .game-grid {{ position:relative; z-index:1; padding:18px 40px 24px; display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:10px; }}
@@ -608,7 +674,7 @@ def build_html(
   </details>
 </div>
 <main id="contenuto">
-<p id="load-status" class="load-status" aria-hidden="true"></p>
+<p id="load-status" class="load-status" role="status" aria-live="polite"></p>
 <div class="no-results" id="no-results" aria-live="polite">// nessun risultato</div>
 <p id="load-error" class="no-results" role="alert"></p>
 <div class="game-grid" id="grid" role="list" aria-label="Catalogo giochi" aria-busy="true"></div>

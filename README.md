@@ -126,7 +126,7 @@ Le chiavi dipendono dal bundle Xbox e sono salvate in `bigids.json`.
 
 ## Output HTML
 
-`index.html` è la shell (ricerca, filtri, statistiche). I giochi non sono inline: lo scraper li scrive anche in `data/games-*.json` e la pagina li carica a gruppi. `games.json` resta il file unico usato dal confronto dello scrape.
+`index.html` è la shell (ricerca, filtri, statistiche). I giochi non sono inline: lo scraper li scrive anche in `data/games-*.json`. La pagina scarica i primi due shard all'apertura e gli altri in background quando si scorre o si cerca; a caricamento finito ricerca e filtri coprono il catalogo intero. `games.json` resta il file unico usato dal confronto dello scrape e non viene pubblicato.
 
 La shell include:
 
@@ -147,7 +147,9 @@ La shell include:
 | `.github/workflows/ci.yml` | push/PR | Compilazione sintattica Python |
 | `.github/workflows/verify.yml` | giornaliera + manuale | Health check su codice, Browse endpoint, discovery legacy e API Display Catalog; soglie configurabili nel run manuale |
 | `.github/workflows/scrape.yml` | settimanale + manuale | Aggiorna `bigids.json`, `games.json`, `data/games-*.json` e `index.html`, poi committa se cambiano; carica un artifact `scrape-report.json` con aggiunte/rimozioni |
-| `.github/workflows/pages.yml` | push su `master` | Pubblica la root del repo su GitHub Pages (include `CNAME`) quando cambiano `index.html`, `games.json` o `data/` |
+| `.github/workflows/pages.yml` | push su `master`, fine di Scrape Xbox Catalog, manuale | Pubblica su GitHub Pages solo `index.html`, `data/`, `assets/` e `CNAME`. Dopo lo scrape il deploy parte solo se il workflow è riuscito |
+| `.github/workflows/gitleaks.yml` | push, PR, manuale | Scansiona la cronologia in cerca di segreti |
+| `.github/dependabot.yml` | settimanale | Aggiorna le GitHub Actions usate dai workflow |
 
 ## Verifiche locali
 

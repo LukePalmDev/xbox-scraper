@@ -1,6 +1,8 @@
 import json
 import base64
 import re
+import shutil
+import subprocess
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -375,6 +377,121 @@ class HtmlBuilderTests(unittest.TestCase):
             self.assertEqual(game, by_id[game["id"]])
         self.assertNotIn("/xbox-scraper/", html)
         self.assertLess(len(html.encode("utf-8")), 200_000)
+        self.assertIn('name="description"', html)
+        self.assertIn('property="og:title"', html)
+        self.assertIn('property="og:description"', html)
+        self.assertIn('property="og:image"', html)
+        self.assertIn("https://scraper.byluke.org/assets/og-image.png", html)
+        self.assertIn("<h1>", html)
+        self.assertIn("INITIAL_SHARDS = 2", html)
+        self.assertIn("function startRest()", html)
+        self.assertIn('id="load-status"', html)
+        self.assertNotIn("Math.min(4", html)
+
+    def test_shell_lazy_loads_two_shards_and_exposes_social_metadata(self):
+        html = html_builder.build_html([self._game(), self._game(id="ZZZZZZZZZZZZ", title="Zulu")], "IT", "Xbox Original (OG)")
+
+        self.assertIn('name="description"', html)
+        self.assertIn('property="og:title"', html)
+        self.assertIn('property="og:description"', html)
+        self.assertIn("og-image.png", html)
+        self.assertRegex(html, r"<h1[ >]")
+        self.assertIn("INITIAL_SHARDS = 2", html)
+        self.assertIn("Scorri o cerca per il resto", html)
+        self.assertIn("function startRest()", html)
+        self.assertNotIn("Math.min(4", html)
+        self.assertLess(len(html.encode("utf-8")), 200_000)
+
+    def test_og_image_is_a_share_card(self):
+        data = Path("assets/og-image.png").read_bytes()
+
+        self.assertTrue(data.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertEqual(data[12:16], b"IHDR")
+        width = int.from_bytes(data[16:20], "big")
+        height = int.from_bytes(data[20:24], "big")
+        self.assertEqual((width, height), (1200, 630))
+
+    def test_initial_site_payload_is_under_three_megabytes(self):
+        html_size = Path("index.html").stat().st_size
+        image_size = Path("assets/og-image.png").stat().st_size
+        shards = sorted(Path("data").glob("games-*.json"))
+        self.assertGreaterEqual(len(shards), 3)
+        initial = html_size + image_size + shards[0].stat().st_size + shards[1].stat().st_size
+        self.assertLess(initial, 3_000_000)
+
+
+class PagesWorkflowTests(unittest.TestCase):
+    def _top_level_keys(self, text: str) -> list[str]:
+        keys = []
+        for line in text.splitlines():
+            if not line or line[0].isspace() or line.lstrip().startswith("#"):
+                continue
+            self.assertIn(":", line)
+            keys.append(line.split(":", 1)[0].strip().strip("'\""))
+        return keys
+
+    def test_workflows_are_valid_yaml_with_explicit_permissions(self):
+        workflows = sorted(Path(".github/workflows").glob("*.yml"))
+        self.assertGreaterEqual(len(workflows), 4)
+        for path in workflows:
+            text = path.read_text(encoding="utf-8")
+            self.assertNotIn("\t", text, path.name)
+            keys = self._top_level_keys(text)
+            self.assertIn("on", keys, path.name)
+            self.assertIn("permissions", keys, path.name)
+            self.assertIn("jobs", keys, path.name)
+            self.assertIn("permissions:", text, path.name)
+
+        dependabot = Path(".github/dependabot.yml").read_text(encoding="utf-8")
+        self.assertIn("version: 2", dependabot)
+        ecosystems = re.findall(r"package-ecosystem:\s*(\S+)", dependabot)
+        self.assertEqual(ecosystems, ["github-actions"])
+
+    def test_pages_deploys_after_a_successful_scrape_and_only_site_files(self):
+        text = Path(".github/workflows/pages.yml").read_text(encoding="utf-8")
+        self.assertIn("workflow_dispatch:", text)
+        self.assertIn("workflow_run:", text)
+        self.assertIn('workflows: ["Scrape Xbox Catalog"]', text)
+        self.assertRegex(text, r"types:\s*\n\s*- completed")
+        self.assertIn(
+            "github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'",
+            text,
+        )
+        self.assertIn("path: _site", text)
+        self.assertNotIn('path: "."', text)
+        self.assertIn("gitleaks/gitleaks-action@v2", Path(".github/workflows/gitleaks.yml").read_text(encoding="utf-8"))
+
+        match = re.search(r"- name: Assemble site\n\s+run: \|\n(?P<body>(?:[ \t]+.+\n)+)", text)
+        self.assertIsNotNone(match)
+        body = "\n".join(line[10:] if line.startswith("          ") else line for line in match.group("body").splitlines())
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shutil.copy(Path("index.html"), root / "index.html")
+            shutil.copy(Path("CNAME"), root / "CNAME")
+            shutil.copy(Path(".nojekyll"), root / ".nojekyll")
+            shutil.copytree(Path("data"), root / "data")
+            shutil.copytree(Path("assets"), root / "assets")
+            (root / ".claude").mkdir()
+            (root / ".claude" / "launch.json").write_text("{}", encoding="utf-8")
+            (root / "README.md").write_text("readme", encoding="utf-8")
+            (root / "scripts").mkdir()
+            (root / "games.json").write_text("[]", encoding="utf-8")
+            (root / ".github").mkdir()
+            (root / "fetch_xbox_og.py").write_text("#", encoding="utf-8")
+
+            subprocess.run(["bash", "-c", body], cwd=root, check=True)
+            site = root / "_site"
+            self.assertTrue((site / "index.html").is_file())
+            self.assertTrue((site / "CNAME").is_file())
+            self.assertTrue((site / "data" / "games-000.json").is_file())
+            self.assertTrue((site / "assets" / "og-image.png").is_file())
+            self.assertTrue((site / ".nojekyll").is_file())
+            self.assertFalse((site / ".claude" / "launch.json").exists())
+            self.assertFalse((site / "README.md").exists())
+            self.assertFalse((site / "scripts").exists())
+            self.assertFalse((site / "games.json").exists())
+            self.assertFalse((site / ".github").exists())
+            self.assertFalse((site / "fetch_xbox_og.py").exists())
 
 
 class CliValidationTests(unittest.TestCase):

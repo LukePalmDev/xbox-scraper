@@ -635,11 +635,21 @@ def main():
     if existing_games:
         games = merge_games(existing_games, games)
 
-    # Output JSON. Il catalogo precedente serve solo allo scrape completo:
-    # una categoria parziale non deve finire nel changelog come migliaia di rimossi.
+    # Output JSON. Il changelog confronta un baseline di scrape completo.
+    # Senza quel file si usa games.json solo se è ancora il file precedente,
+    # e un salto da catalogo parziale non viene pubblicato come "tutto nuovo".
+    # Gli ID il cui fetch è fallito restano nel baseline.
     out_path = Path(args.out)
     data_dir = out_path.parent / "data"
-    previous_games = catalog_diff.load_games_file(Path(json_out)) if category_key == "all" else None
+    catalog_path = Path(json_out)
+    baseline_path = catalog_diff.baseline_file(catalog_path)
+    previous_games = None
+    trusted = False
+    if category_key == "all":
+        previous_games = catalog_diff.load_baseline(baseline_path)
+        trusted = previous_games is not None
+        if previous_games is None:
+            previous_games = catalog_diff.load_games_file(catalog_path)
     Path(json_out).write_text(
         json.dumps(games, indent=None, ensure_ascii=False),
         encoding="utf-8",
@@ -647,24 +657,25 @@ def main():
     log.info("Dati JSON salvati in: %s", json_out)
 
     if category_key == "all":
-        published = catalog_diff.publish_snapshot(
+        outcome = catalog_diff.record_full_catalog(
             previous_games,
             games,
             data_dir,
+            baseline_path,
+            failed_ids=failed,
             when=datetime.now(timezone.utc),
+            trusted=trusted,
         )
-        if published is None:
-            log.info("Changelog novità invariato: catalogo precedente assente o illeggibile")
-        elif catalog_diff.is_empty(published):
+        if outcome == "published":
+            log.info("Changelog novità aggiornato")
+        elif outcome == "unchanged":
             log.info("Changelog novità: nessuna variazione di catalogo")
-        else:
-            log.info(
-                "Changelog novità: +%d -%d, %d ribassi, %d rialzi",
-                len(published["added"]),
-                len(published["removed"]),
-                len(published["price_down"]),
-                len(published["price_up"]),
+        elif outcome == "untrusted-scope":
+            log.warning(
+                "Changelog novità non pubblicato: il catalogo precedente non è uno scrape completo"
             )
+        else:
+            log.info("Changelog novità: baseline iniziale salvato, nessuno snapshot precedente")
 
     # Shell HTML + shard JSON accanto alla pagina (niente catalogo inline).
     shard_paths = write_game_shards(games, data_dir)

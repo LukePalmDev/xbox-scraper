@@ -490,6 +490,8 @@ class PagesWorkflowTests(unittest.TestCase):
         self.assertIn("catalog_diff.py", ci)
         scrape = Path(".github/workflows/scrape.yml").read_text(encoding="utf-8")
         self.assertIn("catalog_diff.py report", scrape)
+        self.assertIn("changelog-baseline.json", scrape)
+        self.assertIn("--preserve-failed failed_ids.json", scrape)
         self.assertIn("PRICE_DOWN", scrape)
         self.assertNotIn("games_old.json", scrape)
 
@@ -508,6 +510,7 @@ class PagesWorkflowTests(unittest.TestCase):
             (root / "README.md").write_text("readme", encoding="utf-8")
             (root / "scripts").mkdir()
             (root / "games.json").write_text("[]", encoding="utf-8")
+            (root / "changelog-baseline.json").write_text("{}", encoding="utf-8")
             (root / ".github").mkdir()
             (root / "fetch_xbox_og.py").write_text("#", encoding="utf-8")
 
@@ -525,6 +528,7 @@ class PagesWorkflowTests(unittest.TestCase):
             self.assertFalse((site / "README.md").exists())
             self.assertFalse((site / "scripts").exists())
             self.assertFalse((site / "games.json").exists())
+            self.assertFalse((site / "changelog-baseline.json").exists())
             self.assertFalse((site / ".github").exists())
             self.assertFalse((site / "fetch_xbox_og.py").exists())
 
@@ -784,6 +788,81 @@ class CatalogDiffTests(unittest.TestCase):
             self.assertEqual(snapshot["price_down"][0]["old"], "10.00 EUR")
             self.assertEqual(snapshot["price_down"][0]["new"], "4.00 EUR")
             self.assertTrue(snapshot["removed"] == [])
+
+    def test_failed_fetch_is_not_published_as_removed_or_later_added(self):
+        when = datetime(2026, 11, 9, tzinfo=timezone.utc)
+        full = [self._paid("A", "Alpha", 10), self._paid("B", "Beta", 8)]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data = root / "data"
+            baseline = root / "changelog-baseline.json"
+            catalog_diff.record_full_catalog(None, full, data, baseline, when=when)
+            partial = [self._paid("A", "Alpha", 10)]
+            outcome = catalog_diff.record_full_catalog(
+                catalog_diff.load_baseline(baseline),
+                partial,
+                data,
+                baseline,
+                failed_ids=["b"],
+                when=datetime(2026, 11, 16, tzinfo=timezone.utc),
+                trusted=True,
+            )
+            self.assertEqual(outcome, "unchanged")
+            self.assertFalse((data / "changes.json").exists())
+            kept = {game["id"]: game for game in catalog_diff.load_baseline(baseline)}
+            self.assertEqual(kept["B"]["title"], "Beta")
+            self.assertEqual(kept["B"]["price"], "8.00 EUR")
+
+            recovered = [self._paid("A", "Alpha", 10), self._paid("B", "Beta", 8)]
+            outcome = catalog_diff.record_full_catalog(
+                catalog_diff.load_baseline(baseline),
+                recovered,
+                data,
+                baseline,
+                when=datetime(2026, 11, 23, tzinfo=timezone.utc),
+                trusted=True,
+            )
+            self.assertEqual(outcome, "unchanged")
+            self.assertFalse((data / "changes.json").exists())
+
+    def test_category_subset_does_not_become_the_next_full_baseline(self):
+        full = [self._paid("A", "Alpha", 10), self._paid("B", "Beta", 8), self._paid("C", "Gamma", 4)]
+        subset = [self._paid("A", "Alpha", 9)]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data = root / "data"
+            baseline = root / "changelog-baseline.json"
+            self.assertEqual(
+                catalog_diff.record_full_catalog(None, full, data, baseline),
+                "no-baseline",
+            )
+            skipped = catalog_diff.record_full_catalog(
+                subset,
+                full,
+                data,
+                baseline,
+                trusted=False,
+                max_churn=1,
+            )
+            self.assertEqual(skipped, "untrusted-scope")
+            self.assertFalse((data / "changes.json").exists())
+
+            nxt = full + [self._paid("D", "Delta", 6)]
+            outcome = catalog_diff.record_full_catalog(
+                catalog_diff.load_baseline(baseline),
+                nxt,
+                data,
+                baseline,
+                when=datetime(2026, 11, 16, tzinfo=timezone.utc),
+                trusted=True,
+            )
+            self.assertEqual(outcome, "published")
+            index = json.loads((data / "changes.json").read_text(encoding="utf-8"))
+            self.assertEqual(index["snapshots"][0]["counts"]["added"], 1)
+            self.assertEqual(index["snapshots"][0]["counts"]["removed"], 0)
+            href = index["snapshots"][0]["href"]
+            snapshot = json.loads((root / href.split("?", 1)[0]).read_text(encoding="utf-8"))
+            self.assertEqual([item["id"] for item in snapshot["added"]], ["D"])
 
 
 if __name__ == "__main__":

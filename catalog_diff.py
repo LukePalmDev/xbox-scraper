@@ -3,6 +3,8 @@
 Lo scrape settimanale riusa questo modulo per il messaggio di commit e per
 `data/changes.json`. L'indice elenca gli ultimi snapshot; i giochi stanno in
 `data/changes/<data>.json`, così la pagina non scarica tutta la storia insieme.
+Il confronto usa `changelog-baseline.json` (scope `all`), non un `games.json`
+lasciato da una categoria parziale. Gli ID con fetch fallito restano nel baseline.
 
 Ogni snapshot ha added, removed, price_down e price_up. I rimossi tengono
 titolo e prezzo dello snapshot precedente. Un prezzo assente o non numerico
@@ -29,6 +31,8 @@ MAX_SNAPSHOT_BYTES = 550_000
 # "novità" settimanale e gonfierebbero il file.
 MAX_BOOTSTRAP_CHURN = 2500
 STORE_URL = "https://www.xbox.com/games/store/-/{gid}"
+BASELINE_NAME = "changelog-baseline.json"
+BASELINE_FIELDS = ("id", "title", "price", "price_num", "price_status", "url")
 
 
 def empty_diff() -> dict[str, list]:
@@ -322,6 +326,120 @@ def _store_snapshot(data_dir: Path, entry: dict, name: str) -> dict:
     }
 
 
+def _norm_id(value) -> str:
+    return value.upper() if isinstance(value, str) else ""
+
+
+def compact_game(game: dict) -> dict:
+    return {key: game[key] for key in BASELINE_FIELDS if key in game}
+
+
+def baseline_file(json_out: Path) -> Path:
+    """Baseline accanto al JSON del catalogo, fuori da data/ così Pages non lo pubblica."""
+    return json_out.with_name(BASELINE_NAME)
+
+
+def load_baseline(path: Path) -> list | None:
+    """Legge solo un baseline marcato come scrape completo. Un file di categoria non vale."""
+    if not path.is_file() or path.stat().st_size == 0:
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict) or data.get("scope") != "all" or not isinstance(data.get("games"), list):
+        return None
+    return data["games"]
+
+
+def save_baseline(path: Path, games: list) -> None:
+    payload = {
+        "scope": "all",
+        "games": [
+            compact_game(game)
+            for game in games
+            if isinstance(game, dict) and isinstance(game.get("id"), str) and game.get("id")
+        ],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_dumps(payload), encoding="utf-8")
+
+
+def load_id_list(path: Path) -> list[str]:
+    if not path.is_file() or path.stat().st_size == 0:
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if isinstance(data, dict):
+        data = data.get("ids", [])
+    if not isinstance(data, list):
+        return []
+    return [item for item in data if isinstance(item, str) and item]
+
+
+def preserve_failed(previous, new, failed_ids) -> list:
+    """Tiene nel confronto i giochi il cui fetch è fallito, così non risultano rimossi.
+
+    Il catalogo pubblicato può ometterli. Il baseline del changelog li conserva
+    finché uno scrape completo non li rilegge: al giro dopo non risultano nuovi.
+    Gli ID assenti perché l'API non li ha restituiti restano rimozioni vere.
+    """
+    if not isinstance(new, list):
+        return []
+    if not isinstance(previous, list):
+        return list(new)
+    failed = {_norm_id(item) for item in failed_ids or [] if isinstance(item, str) and item}
+    if not failed:
+        return list(new)
+    present = {
+        _norm_id(game.get("id"))
+        for game in new
+        if isinstance(game, dict)
+    }
+    carried: list[dict] = []
+    seen: set[str] = set()
+    for game in previous:
+        if not isinstance(game, dict):
+            continue
+        gid = _norm_id(game.get("id"))
+        if gid in failed and gid not in present and gid not in seen:
+            carried.append(game)
+            seen.add(gid)
+    return list(new) + carried
+
+
+def record_full_catalog(
+    previous,
+    new,
+    data_dir: Path,
+    baseline_path: Path,
+    failed_ids=None,
+    when: datetime | None = None,
+    trusted: bool = False,
+    max_churn: int = MAX_BOOTSTRAP_CHURN,
+) -> str:
+    """Aggiorna changelog e baseline dopo uno scrape completo.
+
+    `trusted` è vero quando `previous` arriva dal baseline `scope=all`, non da
+    un `games.json` che una categoria parziale può avere sovrascritto.
+    Ritorna published, unchanged, no-baseline o untrusted-scope.
+    """
+    compared = preserve_failed(previous, new, failed_ids)
+    if not isinstance(previous, list):
+        save_baseline(baseline_path, compared)
+        return "no-baseline"
+    diff = diff_catalogs(previous, compared)
+    churn = len(diff["added"]) > max_churn or len(diff["removed"]) > max_churn
+    if not trusted and churn:
+        save_baseline(baseline_path, compared)
+        return "untrusted-scope"
+    publish_snapshot(previous, compared, data_dir, when=when)
+    save_baseline(baseline_path, compared)
+    return "unchanged" if is_empty(diff) else "published"
+
+
 def publish_snapshot(
     old_games,
     new_games,
@@ -388,6 +506,15 @@ def versioned_href(path: Path, public_path: str) -> str:
     return f"{public_path}?v={digest}"
 
 
+def parse_catalog(data) -> list | None:
+    """Accetta la lista di games.json o il baseline `{scope: all, games: [...]}`."""
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict) and data.get("scope") == "all" and isinstance(data.get("games"), list):
+        return data["games"]
+    return None
+
+
 def load_games_file(path: Path) -> list | None:
     if not path.is_file() or path.stat().st_size == 0:
         return None
@@ -395,7 +522,7 @@ def load_games_file(path: Path) -> list | None:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
-    return data if isinstance(data, list) else None
+    return parse_catalog(data)
 
 
 def load_git_games(repo: Path, rev: str, path: str = "games.json") -> list | None:
@@ -411,7 +538,7 @@ def load_git_games(repo: Path, rev: str, path: str = "games.json") -> list | Non
         data = json.loads(raw)
     except json.JSONDecodeError:
         return None
-    return data if isinstance(data, list) else None
+    return parse_catalog(data)
 
 
 def list_game_commits(repo: Path, path: str = "games.json") -> list[tuple[str, str]]:
@@ -508,6 +635,9 @@ def _cmd_report(args: argparse.Namespace) -> int:
         old_games = load_git_games(Path(args.repo), args.previous_rev, args.games_path)
     else:
         old_games = None
+    failed_ids = load_id_list(Path(args.preserve_failed)) if args.preserve_failed else []
+    if isinstance(old_games, list):
+        new_games = preserve_failed(old_games, new_games, failed_ids)
     report = build_report(old_games, new_games)
     Path(args.report).write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
@@ -554,6 +684,10 @@ def main(argv: list[str] | None = None) -> int:
     report.add_argument("--repo", default=".")
     report.add_argument("--report", required=True)
     report.add_argument("--github-env")
+    report.add_argument(
+        "--preserve-failed",
+        help="JSON con gli ID il cui fetch è fallito: restano nel confronto, non fra i rimossi",
+    )
     report.set_defaults(func=_cmd_report)
 
     bootstrap = sub.add_parser("bootstrap", help="Ricostruisce data/changes.json dalla storia git")

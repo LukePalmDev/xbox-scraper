@@ -635,6 +635,18 @@ def main():
     if existing_games:
         games = merge_games(existing_games, games)
 
+    catalog_path = Path(json_out)
+    existing_catalog = catalog_diff.load_games_file(catalog_path)
+    if catalog_diff.subset_replaces_larger_catalog(category_key, existing_catalog, games):
+        log.warning(
+            "Categoria %s: lascio %s intatto (%d giochi). Il sottoinsieme ne ha %d e non sostituisce il catalogo completo.",
+            category_key,
+            json_out,
+            len(existing_catalog),
+            len(games),
+        )
+        return
+
     # Output JSON. Il changelog confronta un baseline di scrape completo.
     # Senza quel file si usa games.json solo se è ancora il file precedente,
     # e un salto da catalogo parziale non viene pubblicato come "tutto nuovo".
@@ -673,6 +685,11 @@ def main():
         elif outcome == "untrusted-scope":
             log.warning(
                 "Changelog novità non pubblicato: il catalogo precedente non è uno scrape completo"
+            )
+        elif outcome == "fetch-failed":
+            log.warning(
+                "Changelog novità non pubblicato: %d fetch falliti. Il baseline resta invariato.",
+                len(failed),
             )
         else:
             log.info("Changelog novità: baseline iniziale salvato, nessuno snapshot precedente")

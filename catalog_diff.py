@@ -410,6 +410,19 @@ def preserve_failed(previous, new, failed_ids) -> list:
     return list(new) + carried
 
 
+def has_failed_fetches(failed_ids) -> bool:
+    return any(isinstance(item, str) and item for item in (failed_ids or []))
+
+
+def subset_replaces_larger_catalog(category_key: str, existing, new) -> bool:
+    """Uno scrape di una sola categoria non deve sostituire il catalogo completo."""
+    if category_key == "all":
+        return False
+    if not isinstance(existing, list) or not isinstance(new, list):
+        return False
+    return len(existing) > len(new)
+
+
 def record_full_catalog(
     previous,
     new,
@@ -424,8 +437,12 @@ def record_full_catalog(
 
     `trusted` è vero quando `previous` arriva dal baseline `scope=all`, non da
     un `games.json` che una categoria parziale può avere sovrascritto.
-    Ritorna published, unchanged, no-baseline o untrusted-scope.
+    Se anche un solo batch è fallito non si chiama publish_snapshot e il
+    baseline resta quello precedente: un errore transiente non entra in Novità.
+    Ritorna published, unchanged, no-baseline, untrusted-scope o fetch-failed.
     """
+    if has_failed_fetches(failed_ids):
+        return "fetch-failed"
     compared = preserve_failed(previous, new, failed_ids)
     if not isinstance(previous, list):
         save_baseline(baseline_path, compared)

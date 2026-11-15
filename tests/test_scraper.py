@@ -797,7 +797,8 @@ class CatalogDiffTests(unittest.TestCase):
             data = root / "data"
             baseline = root / "changelog-baseline.json"
             catalog_diff.record_full_catalog(None, full, data, baseline, when=when)
-            partial = [self._paid("A", "Alpha", 10)]
+            partial = [self._paid("A", "Alpha", 1)]
+            before = baseline.read_bytes()
             outcome = catalog_diff.record_full_catalog(
                 catalog_diff.load_baseline(baseline),
                 partial,
@@ -807,13 +808,12 @@ class CatalogDiffTests(unittest.TestCase):
                 when=datetime(2026, 11, 16, tzinfo=timezone.utc),
                 trusted=True,
             )
-            self.assertEqual(outcome, "unchanged")
+            self.assertEqual(outcome, "fetch-failed")
             self.assertFalse((data / "changes.json").exists())
-            kept = {game["id"]: game for game in catalog_diff.load_baseline(baseline)}
-            self.assertEqual(kept["B"]["title"], "Beta")
-            self.assertEqual(kept["B"]["price"], "8.00 EUR")
+            self.assertFalse((data / "changes").exists())
+            self.assertEqual(baseline.read_bytes(), before)
 
-            recovered = [self._paid("A", "Alpha", 10), self._paid("B", "Beta", 8)]
+            recovered = [self._paid("A", "Alpha", 1), self._paid("B", "Beta", 8)]
             outcome = catalog_diff.record_full_catalog(
                 catalog_diff.load_baseline(baseline),
                 recovered,
@@ -822,8 +822,16 @@ class CatalogDiffTests(unittest.TestCase):
                 when=datetime(2026, 11, 23, tzinfo=timezone.utc),
                 trusted=True,
             )
-            self.assertEqual(outcome, "unchanged")
-            self.assertFalse((data / "changes.json").exists())
+            self.assertEqual(outcome, "published")
+            index = json.loads((data / "changes.json").read_text(encoding="utf-8"))
+            self.assertEqual(index["snapshots"][0]["counts"]["added"], 0)
+            self.assertEqual(index["snapshots"][0]["counts"]["removed"], 0)
+            self.assertEqual(index["snapshots"][0]["counts"]["price_down"], 1)
+            href = index["snapshots"][0]["href"]
+            snapshot = json.loads((root / href.split("?", 1)[0]).read_text(encoding="utf-8"))
+            self.assertEqual([item["id"] for item in snapshot["price_down"]], ["A"])
+            self.assertEqual(snapshot["added"], [])
+            self.assertEqual(snapshot["removed"], [])
 
     def test_category_subset_does_not_become_the_next_full_baseline(self):
         full = [self._paid("A", "Alpha", 10), self._paid("B", "Beta", 8), self._paid("C", "Gamma", 4)]
@@ -863,6 +871,15 @@ class CatalogDiffTests(unittest.TestCase):
             href = index["snapshots"][0]["href"]
             snapshot = json.loads((root / href.split("?", 1)[0]).read_text(encoding="utf-8"))
             self.assertEqual([item["id"] for item in snapshot["added"]], ["D"])
+
+    def test_category_scrape_does_not_replace_a_larger_catalog(self):
+        full = [self._paid("A", "Alpha", 10), self._paid("B", "Beta", 8)]
+        subset = [self._paid("A", "Alpha", 9)]
+
+        self.assertFalse(catalog_diff.subset_replaces_larger_catalog("all", full, subset))
+        self.assertFalse(catalog_diff.subset_replaces_larger_catalog("xboxOG", None, subset))
+        self.assertFalse(catalog_diff.subset_replaces_larger_catalog("xboxOG", subset, full))
+        self.assertTrue(catalog_diff.subset_replaces_larger_catalog("xboxOG", full, subset))
 
 
 if __name__ == "__main__":

@@ -132,7 +132,7 @@ Le chiavi dipendono dal bundle Xbox e sono salvate in `bigids.json`.
 
 `index.html` è la shell (ricerca, filtri, statistiche, sezione Novità). I giochi non sono inline: lo scraper li scrive anche in `data/games-*.json`. La pagina scarica i primi due shard all'apertura del catalogo e gli altri in background quando si scorre o si cerca; a caricamento finito ricerca e filtri coprono il catalogo intero. `games.json` resta il file unico usato dal confronto dello scrape e non viene pubblicato.
 
-La sezione Novità (`#novita` o `?view=novita`) confronta uno snapshot con il precedente: nuovi, rimossi, prezzo giù e prezzo su, con data dello snapshot e link allo Store. `data/changes.json` e `assets/novita.js` si scaricano solo aprendo quella sezione. Lo scrape completo aggiorna il changelog prima di rigenerare la shell; si tengono gli ultimi 30 snapshot.
+La sezione Novità (`#novita` o `?view=novita`) confronta uno snapshot con il precedente: nuovi, rimossi, prezzo giù e prezzo su, con data dello snapshot e link allo Store. `data/changes.json` e `assets/novita.js` si scaricano solo aprendo quella sezione. Lo scrape completo aggiorna il changelog prima di rigenerare la shell; si tengono gli ultimi 30 snapshot. Il confronto usa `changelog-baseline.json` (solo scrape `all`, non pubblicato). Una categoria parziale non sostituisce quel file e, se `games.json` è già un catalogo più grande, non lo sovrascrive. Se anche un solo batch fallisce, lo scrape completo non pubblica uno snapshot Novità e non sposta il baseline.
 
 La shell include:
 

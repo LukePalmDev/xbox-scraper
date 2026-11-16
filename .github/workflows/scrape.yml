@@ -64,13 +64,26 @@ jobs:
       - name: Detect changes
         id: changes
         run: |
-          # Stesso diff di catalog_diff usato per data/changes.json durante lo scrape.
-          # Qui non si riaccoda uno snapshot: fetch_xbox_og.py l'ha già scritto.
-          python3 catalog_diff.py report \
-            --new games.json \
-            --previous-rev HEAD \
-            --report scrape-report.json \
-            --github-env "$GITHUB_ENV"
+          # Il report non pubblica data/changes: lo scrape completo l'ha già fatto.
+          # Il baseline intero si usa solo con --category all. Una categoria manuale
+          # confrontata con quel file segnerebbe come rimossi tutti gli altri giochi.
+          CATEGORY="${{ github.event.inputs.category || 'all' }}"
+          if [ "$CATEGORY" = "all" ]; then
+            python3 catalog_diff.py report \
+              --new games.json \
+              --previous-rev HEAD \
+              --games-path changelog-baseline.json \
+              --preserve-failed failed_ids.json \
+              --report scrape-report.json \
+              --github-env "$GITHUB_ENV"
+          else
+            python3 catalog_diff.py report \
+              --new games.json \
+              --previous-rev HEAD \
+              --games-path games.json \
+              --report scrape-report.json \
+              --github-env "$GITHUB_ENV"
+          fi
 
       - name: Upload scrape report
         uses: actions/upload-artifact@v4
@@ -104,7 +117,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A bigids.json index.html games.json
+          git add -A bigids.json index.html games.json changelog-baseline.json
           if [ -d data ]; then
             git add -A data
           fi

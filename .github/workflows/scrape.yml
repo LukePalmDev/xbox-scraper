@@ -86,7 +86,7 @@ jobs:
           fi
 
       - name: Upload scrape report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: scrape-report
           path: scrape-report.json
